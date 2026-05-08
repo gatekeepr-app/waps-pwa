@@ -29,9 +29,10 @@ export default defineSchema({
 
   // --- the new boardItems table ---
   boardItems: defineTable({
-    ownerKey: v.string(), // redundant denorm for fast queries
+    ownerKey: v.string(),
     boardId: v.id('boards'),
     websiteId: v.id('websites'),
+    notes: v.optional(v.string()),
     createdAt: v.number()
   })
     .index('by_ownerKey', ['ownerKey'])
@@ -93,9 +94,18 @@ export default defineSchema({
   }).index('by_email', ['email']),
 
   sessions: defineTable({
-    token: v.string(), // opaque session token
+    token: v.string(),
     userId: v.id('users'),
     createdAt: v.number(),
-    expiresAt: v.number() // epoch ms
-  }).index('by_token', ['token'])
+    expiresAt: v.number()
+  }).index('by_token', ['token']),
+
+  resetTokens: defineTable({
+    email: v.string(),
+    token: v.string(),
+    expiresAt: v.number(),
+    consumed: v.optional(v.boolean())
+  })
+    .index('by_token', ['token'])
+    .index('by_email', ['email'])
 })

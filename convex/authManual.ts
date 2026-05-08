@@ -95,3 +95,37 @@ export const sessionUser = query({
     return await ctx.db.get(sess.userId)
   }
 })
+
+/** Password reset tokens */
+export const createResetToken = mutation({
+  args: { email: v.string(), token: v.string(), expiresAt: v.number() },
+  handler: async (ctx, { email, token, expiresAt }) => {
+    await ctx.db.insert('resetTokens', { email, token, expiresAt })
+    return { ok: true }
+  }
+})
+
+export const resetPassword = mutation({
+  args: { token: v.string(), newPassword: v.string() },
+  handler: async (ctx, { token, newPassword }) => {
+    const doc = await ctx.db
+      .query('resetTokens')
+      .withIndex('by_token', q => q.eq('token', token))
+      .first()
+    if (!doc) throw new Error('Invalid or expired reset token')
+    if (doc.consumed) throw new Error('Token already used')
+    if (doc.expiresAt < Date.now()) throw new Error('Token expired')
+
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_email', q => q.eq('email', doc.email))
+      .first()
+    if (!user) throw new Error('User not found')
+
+    const passwordHash = await bcrypt.hash(newPassword, 10)
+    await ctx.db.patch(user._id, { passwordHash, updatedAt: Date.now() })
+    await ctx.db.patch(doc._id, { consumed: true })
+
+    return { ok: true }
+  }
+})

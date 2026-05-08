@@ -203,12 +203,7 @@ export default function LandingPage() {
               transition={{ duration: 0.35, delay: i * 0.05 }}
               className='rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur'
             >
-              <div
-                className='mb-3 inline-flex h-9 w-9 items-center justify-center rounded-xl'
-                style={{
-                  background: 'linear-gradient(135deg, #FF6B57, #FFB057)'
-                }}
-              >
+              <div className='waps-brand-bg mb-3 inline-flex h-9 w-9 items-center justify-center rounded-xl'>
                 {f.icon}
               </div>
               <div className='text-base font-semibold'>{f.title}</div>

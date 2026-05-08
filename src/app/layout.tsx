@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import { ConvexClientProvider } from './ConvexClientProvider'
 import './globals.css'
+import PwaRegister from './pwa-register'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -12,6 +13,7 @@ const APP_TITLE_TEMPLATE = '%s - Waps'
 const APP_DESCRIPTION = 'Your Bookmarking Buddy'
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://waps.app'),
   applicationName: APP_NAME,
   title: {
     default: APP_DEFAULT_TITLE,
@@ -19,7 +21,6 @@ export const metadata: Metadata = {
   },
   description: APP_DESCRIPTION,
   manifest: '/manifest.json',
-  themeColor: '#FF4D2E',
   other: {
     'apple-mobile-web-app-capable': 'yes',
     'apple-mobile-web-app-status-bar-style': 'black-translucent'
@@ -78,6 +79,7 @@ export default function RootLayout({
       </head>
       <body className={inter.className}>
         <ConvexClientProvider>
+          <PwaRegister />
           <div className='mx-auto flex min-h-screen flex-col'>
             <main className='flex grow flex-col'>{children}</main>
             <BottomNav />

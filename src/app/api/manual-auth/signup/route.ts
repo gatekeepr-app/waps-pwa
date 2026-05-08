@@ -1,13 +1,17 @@
 // app/api/auth/manual/signup/route.ts
 export const runtime = 'nodejs'
 
+import { rateLimit } from '@/lib/request-dedup'
 import { ConvexHttpClient } from 'convex/browser'
 import { randomBytes } from 'crypto'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { api } from '../../../../../convex/_generated/api'
 
-const client = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!)
+let _client: ConvexHttpClient | null = null
+const client = () =>
+  _client ??
+  (_client = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!))
 
 const bodySchema = z.object({
   email: z.string().email().max(254),
@@ -19,8 +23,15 @@ export async function POST(req: Request) {
   try {
     const { email, password, name } = bodySchema.parse(await req.json())
 
-    // ✅ call the mutation we just added (NOT signupAction)
-    const { userId } = await client.mutation(api.authManual.signup, {
+    const rl = rateLimit(`signup:${email}`, 3, 3600_000)
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: 'Too many signup attempts. Try again later.' },
+        { status: 429 }
+      )
+    }
+
+    const { userId } = await client().mutation(api.authManual.signup, {
       email,
       password,
       name
@@ -31,7 +42,7 @@ export async function POST(req: Request) {
     const maxAgeDays = 30
     const expiresAt = Date.now() + maxAgeDays * 24 * 60 * 60 * 1000
 
-    await client.mutation(api.authManual.createSession, {
+    await client().mutation(api.authManual.createSession, {
       userId,
       token,
       expiresAt

@@ -68,8 +68,7 @@ export default function WapCardSquare({
   return (
     <div
       className={cn(
-        'group relative aspect-square overflow-hidden rounded-2xl border border-zinc-800',
-        'bg-zinc-900/70 text-white shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl',
+        'waps-card group relative aspect-square overflow-hidden rounded-2xl',
         'transition-transform hover:-translate-y-0.5 active:scale-[0.99]',
         className
       )}
@@ -105,7 +104,7 @@ export default function WapCardSquare({
           style={{ background: overlayForCategory(category) }}
         />
 
-        <div className='pointer-events-none absolute inset-x-0 bottom-0 z-10 h-10 bg-gradient-to-t from-zinc-900/70 to-transparent' />
+        <div className='from-[var(--waps-bg-1)]/70 pointer-events-none absolute inset-x-0 bottom-0 z-10 h-10 bg-gradient-to-t to-transparent' />
 
         {origin && (
           <div className='absolute right-2 top-2 z-20 rounded-lg bg-black/35 px-2 py-1 text-[10px] leading-none backdrop-blur'>
@@ -115,17 +114,17 @@ export default function WapCardSquare({
       </div>
 
       {/* Body */}
-      <div className='absolute inset-x-3 top-[34%] rounded-2xl border border-zinc-800 bg-zinc-950/85 px-3 py-3'>
+      <div className='absolute inset-x-3 top-[34%] rounded-2xl border border-white/10 bg-black/50 px-3 py-3 backdrop-blur'>
         <div className='truncate text-[13px] font-semibold'>{title}</div>
         {subtitle && (
-          <div className='mt-0.5 truncate text-[12px] text-zinc-400'>
+          <div className='mt-0.5 truncate text-[12px] text-white/50'>
             {subtitle}
           </div>
         )}
       </div>
 
       {(countLeftNum || countRight) && (
-        <div className='absolute inset-x-3 bottom-2 flex items-end justify-between text-xs text-zinc-200'>
+        <div className='absolute inset-x-3 bottom-2 flex items-end justify-between text-xs text-white/80'>
           <div className='flex items-baseline gap-1'>
             {countLeftNum && (
               <span className='text-[22px] font-bold leading-none'>
@@ -133,7 +132,7 @@ export default function WapCardSquare({
               </span>
             )}
             {countLeftLabel && (
-              <span className='text-zinc-400'>{countLeftLabel}</span>
+              <span className='text-white/50'>{countLeftLabel}</span>
             )}
           </div>
           {countRight && <div className='font-medium'>{countRight}</div>}

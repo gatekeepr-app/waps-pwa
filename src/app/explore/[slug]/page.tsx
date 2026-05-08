@@ -3,8 +3,9 @@
 
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Textarea } from '@/components/ui/textarea'
 import { useMutation, useQuery } from 'convex/react'
-import { Check, ExternalLink, Plus } from 'lucide-react'
+import { Check, ExternalLink, Plus, Share2, StickyNote } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
@@ -39,9 +40,33 @@ export default function SiteDetailPage() {
   )
   const similar = useQuery(api.waps.getSimilarWebsites, { slug, limit: 8 })
   const addToBoard = useMutation(api.waps.addToBoard)
+  const updateNotes = useMutation(api.boardItems.updateNotes)
 
   const [boardSlug, setBoardSlug] = useState<string>('default')
   const [adding, setAdding] = useState(false)
+  const [editingNotes, setEditingNotes] = useState(false)
+  const [notes, setNotes] = useState(details?.notes || '')
+  const [notesSaving, setNotesSaving] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (details?.notes !== undefined) setNotes(details.notes)
+  }, [details?.notes])
+
+  const handleSaveNotes = async () => {
+    if (!details?.boardItemId) return
+    setNotesSaving(true)
+    try {
+      await updateNotes({
+        ownerKey: ownerKey!,
+        boardItemId: details.boardItemId,
+        notes
+      })
+      setEditingNotes(false)
+    } finally {
+      setNotesSaving(false)
+    }
+  }
 
   const site = details?.website
   const isSaved = !!details?.isSaved
@@ -179,6 +204,31 @@ export default function SiteDetailPage() {
                 </div>
               )}
 
+              {/* Share / Copy link */}
+              <button
+                onClick={async () => {
+                  const url = window.location.href
+                  if (navigator.share) {
+                    await navigator.share({ url, title: site.title })
+                  } else {
+                    await navigator.clipboard.writeText(url)
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 2000)
+                  }
+                }}
+                className='inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white/80 hover:bg-white/10 sm:w-auto'
+              >
+                {copied ? (
+                  <>
+                    <Check className='h-4 w-4' /> Copied
+                  </>
+                ) : (
+                  <>
+                    <Share2 className='h-4 w-4' /> Share
+                  </>
+                )}
+              </button>
+
               {/* Saved state */}
               {isSaved && (
                 <div className='inline-flex h-10 w-full items-center justify-center gap-1 rounded-xl border border-white/15 bg-white/10 px-3 text-white/90 sm:w-auto'>
@@ -186,13 +236,64 @@ export default function SiteDetailPage() {
                 </div>
               )}
             </div>
+
+            {/* Notes (only when saved) */}
+            {isSaved && (
+              <div className='mt-4 rounded-xl border border-white/10 bg-white/5 p-3'>
+                <div className='flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-white/50'>
+                  <StickyNote className='h-3.5 w-3.5' />
+                  Your notes
+                </div>
+                {editingNotes ? (
+                  <div className='mt-2 space-y-2'>
+                    <Textarea
+                      value={notes}
+                      onChange={e => setNotes(e.target.value)}
+                      placeholder='Add your personal notes about this website…'
+                      rows={3}
+                      className='border-white/10 bg-white/5 text-sm text-white placeholder:text-white/40 focus-visible:ring-white/20'
+                    />
+                    <div className='flex gap-2'>
+                      <Button
+                        size='sm'
+                        onClick={handleSaveNotes}
+                        disabled={notesSaving}
+                        className='waps-btn h-8 rounded-lg text-xs'
+                      >
+                        {notesSaving ? 'Saving…' : 'Save'}
+                      </Button>
+                      <Button
+                        size='sm'
+                        variant='outline'
+                        onClick={() => {
+                          setNotes(details?.notes || '')
+                          setEditingNotes(false)
+                        }}
+                        className='h-8 rounded-lg border-white/15 text-xs text-white hover:bg-white/10'
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setEditingNotes(true)}
+                    className='bg-white/3 mt-2 w-full cursor-text rounded-lg border border-white/5 p-2.5 text-left text-sm text-white/60 hover:border-white/15'
+                  >
+                    {notes || 'Click to add notes…'}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Info panel -> becomes block on mobile */}
+        {/* Info panel + Similar websites */}
         <div className='mt-4 grid grid-cols-1 gap-4 md:mt-6 md:gap-6 lg:grid-cols-3'>
           {/* About (full width on mobile) */}
-          <div className='waps-card rounded-2xl p-4 sm:p-5 lg:col-span-1'>
+          <div
+            className={`waps-card rounded-2xl p-4 sm:p-5 ${similar?.length ? 'lg:col-span-1' : 'lg:col-span-3'}`}
+          >
             <h2 className='mb-2 text-base font-semibold sm:text-lg'>About</h2>
             <div className='space-y-1.5 text-sm text-white/80'>
               <p>
@@ -221,6 +322,19 @@ export default function SiteDetailPage() {
               </p>
             </div>
           </div>
+          {/* Similar websites */}
+          {similar && similar.length > 0 && (
+            <div className='lg:col-span-2'>
+              <h2 className='mb-3 text-base font-semibold sm:text-lg'>
+                Similar websites
+              </h2>
+              <div className='grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4'>
+                {similar.map(s => (
+                  <SimilarCard key={s._id} site={s} />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -272,7 +386,7 @@ function SimilarCard({ site }: { site: any }) {
           </div>
           <div className='min-w-0'>
             <Link
-              href={`/site/${site.slug}`}
+              href={`/explore/${site.slug}`}
               className='block truncate font-medium hover:underline'
             >
               {site.title}

@@ -85,3 +85,39 @@ export const update = mutation({
   handler: (ctx, { id, isPublic }) =>
     ctx.db.patch(id, { isPublic, updatedAt: Date.now() })
 })
+
+export const rename = mutation({
+  args: { id: v.id('boards'), name: v.string() },
+  handler: async (ctx, { id, name }) => {
+    const slug = slugify(name)
+    await ctx.db.patch(id, { name, slug, updatedAt: Date.now() })
+    return { slug }
+  }
+})
+
+export const remove = mutation({
+  args: { id: v.id('boards'), ownerKey: v.string() },
+  handler: async (ctx, { id, ownerKey }) => {
+    const board = await ctx.db.get(id)
+    if (!board || board.ownerKey !== ownerKey) throw new Error('Forbidden')
+
+    const items = await ctx.db
+      .query('boardItems')
+      .withIndex('by_boardId', q => q.eq('boardId', id))
+      .collect()
+
+    for (const item of items) {
+      await ctx.db.delete(item._id)
+    }
+    await ctx.db.delete(id)
+    return { ok: true }
+  }
+})
+
+function slugify(s: string): string {
+  return s
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)+/g, '')
+}

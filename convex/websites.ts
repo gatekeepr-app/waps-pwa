@@ -5,19 +5,17 @@ import { mutation, query } from './_generated/server'
 export const exploreFeed = query({
   args: {
     q: v.optional(v.string()),
-    limit: v.optional(v.number()) // default 120
+    limit: v.optional(v.number())
   },
   handler: async (ctx, { q, limit }) => {
     const LIM = Math.min(Math.max(limit ?? 120, 10), 300)
     const search = q?.trim().toLowerCase()
 
-    // 1) Take a candidate set ordered by saveCount (ascending by index — we’ll sort later)
     const candidates = await ctx.db
       .query('websites')
-      .withIndex('by_saveCount') // ascending
+      .withIndex('by_saveCount')
       .collect()
 
-    // 2) Reverse for descending, then iterate and compute publicSaveCount
     const results: Array<{
       _id: string
       slug: string
@@ -33,13 +31,11 @@ export const exploreFeed = query({
     for (let i = candidates.length - 1; i >= 0; i--) {
       const w = candidates[i]
 
-      // Optional client-side-ish search (cheap filter)
       if (search) {
         const hay = `${w.title} ${w.description} ${w.origin}`.toLowerCase()
         if (!hay.includes(search)) continue
       }
 
-      // Count unique people who saved this website to a PUBLIC board
       const items = await ctx.db
         .query('boardItems')
         .withIndex('by_websiteId', q => q.eq('websiteId', w._id))
@@ -47,14 +43,14 @@ export const exploreFeed = query({
 
       if (!items.length) continue
 
-      const uniqueOwners = new Set<string>()
+      const boardIds = Array.from(new Set(items.map(bi => bi.boardId)))
+      const boards = await Promise.all(boardIds.map(id => ctx.db.get(id)))
+      const boardMap = new Map(boards.filter(Boolean).map(b => [b!._id, b!]))
 
-      // Avoid expensive loops if we already have enough results
+      const uniqueOwners = new Set<string>()
       for (const bi of items) {
-        const board = await ctx.db.get(bi.boardId)
-        if (board?.isPublic) {
-          uniqueOwners.add(board.ownerKey)
-        }
+        const board = boardMap.get(bi.boardId)
+        if (board?.isPublic) uniqueOwners.add(board.ownerKey)
       }
 
       const publicSaveCount = uniqueOwners.size
@@ -75,8 +71,6 @@ export const exploreFeed = query({
       if (results.length >= LIM) break
     }
 
-    // Already iterated candidates in descending saveCount, and we filtered;
-    // For ties or when 'q' is used, ensure final sort by publicSaveCount desc.
     results.sort((a, b) => b.publicSaveCount - a.publicSaveCount)
     return results
   }
@@ -108,30 +102,26 @@ export const listAll = query({
     q: v.optional(v.string()),
     limit: v.optional(v.number()),
     sort: v.optional(v.union(v.literal('popular'), v.literal('recent'))),
-    minSaveCount: v.optional(v.number()) // default 0 (no filter)
+    minSaveCount: v.optional(v.number())
   },
   handler: async (ctx, { q, limit, sort, minSaveCount }) => {
     const LIM = Math.min(Math.max(limit ?? 120, 10), 500)
     const search = q?.trim().toLowerCase()
     const min = minSaveCount ?? 0
 
-    // Pull via index to keep it efficient; we’ll sort and filter in memory
     let rows =
       sort === 'recent'
         ? await ctx.db.query('websites').withIndex('by_createdAt').collect()
         : await ctx.db.query('websites').withIndex('by_saveCount').collect()
 
-    // Optional filter (usually unnecessary now that all are 1)
     if (min > 0) rows = rows.filter(w => (w.saveCount ?? 0) >= min)
 
-    // Search
     if (search) {
       rows = rows.filter(w =>
         `${w.title} ${w.description} ${w.origin}`.toLowerCase().includes(search)
       )
     }
 
-    // Sort with tie-breakers
     if (sort === 'recent') {
       rows.sort(
         (a, b) => b.createdAt - a.createdAt || a.title.localeCompare(b.title)
@@ -194,7 +184,6 @@ export const upsert = mutation({
   handler: async (ctx, args) => {
     const now = Date.now()
 
-    // 1) If canonical exists, PATCH in place
     const existing = await ctx.db
       .query('websites')
       .withIndex('by_canonicalUrl', q =>
@@ -216,7 +205,6 @@ export const upsert = mutation({
       return existing._id
     }
 
-    // 2) Ensure slug is unique
     let finalSlug = slugify(args.slug || args.title)
     const collide = await ctx.db
       .query('websites')
@@ -227,7 +215,6 @@ export const upsert = mutation({
       finalSlug = `${finalSlug}-${Math.random().toString(36).slice(2, 6)}`
     }
 
-    // 3) Insert
     const _id: Id<'websites'> = await ctx.db.insert('websites', {
       canonicalUrl: args.canonicalUrl,
       origin: args.origin,

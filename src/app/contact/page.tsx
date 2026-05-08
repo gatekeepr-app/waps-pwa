@@ -19,10 +19,6 @@ export default function ContactPage() {
   // Anti-bot honeypot; should stay empty
   const [company, setCompany] = useState('')
 
-  const ambient =
-    'radial-gradient(1000px 600px at 10% -10%, rgba(255,107,87,0.18), transparent 60%), ' +
-    'radial-gradient(900px 600px at 110% 10%, rgba(255,176,87,0.12), transparent 50%), #0B0B10'
-
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setErr(null)
@@ -37,7 +33,7 @@ export default function ContactPage() {
           email,
           subject,
           message,
-          company // honeypot
+          company
         })
       })
 
@@ -59,27 +55,19 @@ export default function ContactPage() {
   }
 
   return (
-    <main
-      className='min-h-dvh px-4 pb-24 pt-6 text-white'
-      style={{ background: ambient }}
-    >
+    <main className='waps-bg min-h-dvh px-4 pb-24 pt-6 text-white'>
       <div className='mx-auto w-full max-w-screen-sm space-y-5'>
         {/* Card header */}
-        <div className='rounded-3xl border border-white/15 bg-white/10 p-5 shadow-[0_10px_40px_rgba(0,0,0,0.35)] backdrop-blur-2xl'>
+        <div className='waps-card rounded-2xl p-5'>
           <div className='flex items-center gap-3'>
-            <div
-              className='grid h-11 w-11 place-items-center rounded-2xl'
-              style={{
-                background: 'linear-gradient(135deg, #FF6B57, #FFB057)'
-              }}
-            >
+            <div className='waps-brand-bg grid h-11 w-11 place-items-center rounded-2xl'>
               <Mail className='h-5 w-5 text-white' />
             </div>
             <div>
               <h1 className='text-lg font-semibold leading-tight'>
                 Contact us
               </h1>
-              <p className='text-xs text-white/70'>
+              <p className='text-xs text-white/50'>
                 Have a question about Waps? Send us a note.
               </p>
             </div>
@@ -111,7 +99,7 @@ export default function ContactPage() {
               <Input
                 value={subject}
                 onChange={e => setSubject(e.currentTarget.value)}
-                placeholder='What’s this about?'
+                placeholder="What's this about?"
                 className='h-9 border-0 bg-transparent text-white placeholder:text-white/60 focus-visible:ring-0'
               />
             </Field>
@@ -146,18 +134,15 @@ export default function ContactPage() {
             )}
             {state === 'success' && (
               <p className='flex items-center gap-2 text-sm text-emerald-300'>
-                <CheckCircle2 className='h-4 w-4' /> Thanks! We’ll get back to
-                you soon.
+                <CheckCircle2 className='h-4 w-4' /> Thanks! We&apos;ll get back
+                to you soon.
               </p>
             )}
 
             <Button
               type='submit'
               disabled={state === 'sending'}
-              className='w-full text-white'
-              style={{
-                background: 'linear-gradient(135deg, #FF6B57, #FF8F69)'
-              }}
+              className='waps-btn w-full'
             >
               {state === 'sending' ? (
                 <span className='inline-flex items-center gap-2'>
@@ -170,7 +155,7 @@ export default function ContactPage() {
           </form>
         </div>
 
-        <div className='text-center text-xs text-white/60'>
+        <div className='text-center text-xs text-white/50'>
           We usually respond within 1–2 business days.
         </div>
       </div>
@@ -187,10 +172,10 @@ function Field({
 }) {
   return (
     <label className='block'>
-      <div className='mb-1 text-xs uppercase tracking-wide text-white/70'>
+      <div className='mb-1 text-xs uppercase tracking-wide text-white/50'>
         {label}
       </div>
-      <div className='rounded-2xl border border-white/15 bg-white/10 p-2 backdrop-blur'>
+      <div className='rounded-xl border border-white/10 bg-white/5 p-2'>
         {children}
       </div>
     </label>

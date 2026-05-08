@@ -14,7 +14,8 @@ import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import clsx from 'clsx'
 import { useQuery } from 'convex/react'
-import { Loader2, SlidersHorizontal, Tag } from 'lucide-react'
+import { Bookmark, Loader2, LogIn, SlidersHorizontal, Tag } from 'lucide-react'
+import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../../../convex/_generated/api'
 
@@ -24,7 +25,7 @@ function useOwnerKey() {
     try {
       const k =
         localStorage.getItem('wapsOwnerKey') ||
-        localStorage.getItem('wapsOwnerKey')
+        localStorage.getItem('waps.ownerKey')
       if (k) setOwnerKey(k)
     } catch {}
   }, [])
@@ -69,16 +70,41 @@ export default function WapsPage() {
   if (!ownerKey) {
     return (
       <div
-        className={clsx('waps-bg min-h-screen px-4 py-10 text-white md:px-8')}
+        className='flex min-h-screen flex-col items-center justify-center gap-6 px-4 text-center text-white'
+        style={{
+          background:
+            'radial-gradient(1000px 600px at 10% -10%, rgba(255,107,87,0.12), transparent 60%), ' +
+            'radial-gradient(900px 600px at 110% 10%, rgba(255,176,87,0.10), transparent 50%), #0B0B10'
+        }}
       >
-        <header className='mb-6'>
-          <h1 className='text-3xl font-semibold tracking-tight'>Your Waps</h1>
-          <p className='mt-2 text-sm opacity-70'>
-            No owner key found. Set{' '}
-            <code className='opacity-90'>waps.ownerKey</code> (or{' '}
-            <code className='opacity-90'>ownerKey</code>) in localStorage.
+        <div className='rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur'>
+          <Bookmark className='mx-auto h-10 w-10 text-orange-400' />
+        </div>
+        <div>
+          <h1 className='text-2xl font-semibold tracking-tight'>
+            Your Waps are waiting
+          </h1>
+          <p className='mt-2 text-sm text-white/60'>
+            Sign in to view, organize, and manage all your saved websites.
           </p>
-        </header>
+        </div>
+        <Link href='/auth'>
+          <Button
+            className='inline-flex items-center gap-2 text-white'
+            style={{
+              background: 'linear-gradient(135deg, #FF6B57, #FF8F69)'
+            }}
+          >
+            <LogIn className='h-4 w-4' />
+            Sign in
+          </Button>
+        </Link>
+        <Link
+          href='/explore'
+          className='text-sm text-white/40 hover:text-white/60'
+        >
+          Browse public Waps instead
+        </Link>
       </div>
     )
   }

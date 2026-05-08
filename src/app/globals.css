@@ -51,11 +51,15 @@
     --chart-5: 27 87% 67%;
     --radius: 0.5rem;
     --waps-brand: #ff4d2e;
-    --waps-bg-1: #0b0b11; /* deep charcoal */
-    --waps-bg-2: #141423; /* slightly lighter layer */
+    --waps-brand-light: #ff6b57;
+    --waps-brand-orange: #ffb057;
+    --waps-bg-1: #0b0b11;
+    --waps-bg-2: #141423;
     --waps-glass: rgba(255, 255, 255, 0.06);
     --waps-glass-2: rgba(255, 255, 255, 0.1);
+    --waps-glass-3: rgba(255, 255, 255, 0.04);
     --waps-border: rgba(255, 255, 255, 0.12);
+    --waps-border-light: rgba(255, 255, 255, 0.08);
     --waps-muted: rgba(255, 255, 255, 0.65);
   }
   .dark {
@@ -152,14 +156,52 @@
     color: rgba(255, 255, 255, 0.5);
   }
 
+  /* Brand gradient (icon backgrounds etc.) */
+  .waps-brand-bg {
+    background: linear-gradient(
+      135deg,
+      var(--waps-brand-light),
+      var(--waps-brand-orange)
+    );
+  }
+
   /* Brand button */
   .waps-btn {
-    background: linear-gradient(180deg, #ff5c3f, #ff4d2e);
+    background: linear-gradient(135deg, var(--waps-brand-light), #ff8f69);
     color: white;
     border: 1px solid rgba(255, 255, 255, 0.12);
+    transition: filter 180ms ease;
   }
   .waps-btn:hover {
-    filter: brightness(1.04);
+    filter: brightness(1.08);
+  }
+  .waps-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    filter: none;
+  }
+
+  /* Outline button (ghost style) */
+  .waps-btn-outline {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--waps-border);
+    color: white;
+    transition: background 180ms ease;
+  }
+  .waps-btn-outline:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  /* Glass panel (consistent card look) */
+  .waps-glass {
+    background: rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--waps-border-light);
+  }
+  .waps-glass-strong {
+    background: rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(14px);
+    border: 1px solid var(--waps-border);
   }
 }
 

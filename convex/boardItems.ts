@@ -125,6 +125,23 @@ export const remove = mutation({
   }
 })
 
+/** Update notes on a boardItem (user's personal note for a saved website). */
+export const updateNotes = mutation({
+  args: {
+    ownerKey: v.string(),
+    boardItemId: v.id('boardItems'),
+    notes: v.optional(v.string())
+  },
+  handler: async (ctx, { ownerKey, boardItemId, notes }) => {
+    const item = await ctx.db.get(boardItemId)
+    if (!item) throw new Error('Not found')
+    if (item.ownerKey !== ownerKey) throw new Error('Forbidden')
+
+    await ctx.db.patch(boardItemId, { notes: notes || undefined })
+    return { ok: true }
+  }
+})
+
 /** ---------- queries ---------- */
 
 export const listMine = query({

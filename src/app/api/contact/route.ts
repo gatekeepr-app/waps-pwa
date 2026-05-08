@@ -3,7 +3,9 @@ export const runtime = 'nodejs'
 import { NextResponse } from 'next/server'
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+let _resend: Resend | null = null
+const getResend = () =>
+  _resend ?? (_resend = new Resend(process.env.RESEND_API_KEY))
 
 type Payload = {
   name: string
@@ -57,7 +59,7 @@ export async function POST(req: Request) {
       </div>
     `
 
-    await resend.emails.send({
+    await getResend().emails.send({
       from,
       to,
       subject,

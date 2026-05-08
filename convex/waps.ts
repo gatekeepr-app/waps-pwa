@@ -1,8 +1,40 @@
 // File: convex/waps.ts
 
 import { v } from 'convex/values'
-import { Id } from './_generated/dataModel'
+import { Doc, Id } from './_generated/dataModel'
 import { mutation, query } from './_generated/server'
+
+function slugify(s: string): string {
+  return s
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)+/g, '')
+}
+
+async function ensureDefaultBoard(
+  ctx: any,
+  ownerKey: string
+): Promise<Doc<'boards'>> {
+  const boards = await ctx.db
+    .query('boards')
+    .withIndex('by_ownerKey', (q: any) => q.eq('ownerKey', ownerKey))
+    .collect()
+  let def = boards.find((b: any) => b.slug === 'default')
+  if (!def) {
+    const now = Date.now()
+    const _id = await ctx.db.insert('boards', {
+      ownerKey,
+      name: 'My Waps',
+      slug: 'default',
+      isPublic: false,
+      createdAt: now,
+      updatedAt: now
+    })
+    def = await ctx.db.get(_id)
+  }
+  return def
+}
 
 export const listUserWaps = query({
   args: {
@@ -52,6 +84,7 @@ export const listUserWaps = query({
               createdAt: bi.createdAt,
               boardId: bi.boardId,
               websiteId: bi.websiteId,
+              notes: bi.notes,
               website: {
                 _id: site._id,
                 title: site.title,
@@ -151,6 +184,12 @@ export const getWebsiteDetails = query({
       }
     }
 
+    let notes: string | undefined
+    if (boardItemId) {
+      const bi = await ctx.db.get(boardItemId)
+      notes = bi?.notes
+    }
+
     return {
       website: {
         _id: website._id,
@@ -168,7 +207,8 @@ export const getWebsiteDetails = query({
         updatedAt: website.updatedAt
       },
       isSaved,
-      boardItemId
+      boardItemId,
+      notes
     }
   }
 })
@@ -203,7 +243,6 @@ export const getSimilarWebsites = query({
     const cats = seed.categories ?? []
     if (cats.length === 0) return []
 
-    // Pull by popularity; filter to category overlap
     const popular = await ctx.db
       .query('websites')
       .withIndex('by_publicSaveCount')
@@ -240,7 +279,7 @@ export const addToBoard = mutation({
   args: {
     ownerKey: v.string(),
     websiteSlug: v.string(),
-    boardSlug: v.optional(v.string()) // default "default"
+    boardSlug: v.optional(v.string())
   },
   handler: async (ctx, { ownerKey, websiteSlug, boardSlug }) => {
     const boardSlugFinal = (boardSlug && boardSlug.trim()) || 'default'
@@ -295,5 +334,110 @@ export const addToBoard = mutation({
     await ctx.db.patch(website._id, { saveCount: (website.saveCount ?? 0) + 1 })
 
     return { ok: true, alreadySaved: false, boardItemId }
+  }
+})
+
+/** Move a boardItem to a different board. */
+export const moveToBoard = mutation({
+  args: {
+    boardItemId: v.id('boardItems'),
+    targetBoardId: v.id('boards'),
+    ownerKey: v.string()
+  },
+  handler: async (ctx, { boardItemId, targetBoardId, ownerKey }) => {
+    const item = await ctx.db.get(boardItemId)
+    if (!item || item.ownerKey !== ownerKey) throw new Error('Forbidden')
+    const board = await ctx.db.get(targetBoardId)
+    if (!board || board.ownerKey !== ownerKey) throw new Error('Forbidden')
+
+    await ctx.db.patch(boardItemId, { boardId: targetBoardId })
+    return { ok: true }
+  }
+})
+
+/** Bulk import bookmarks from a browser export. */
+export const bulkImport = mutation({
+  args: {
+    ownerKey: v.string(),
+    bookmarks: v.array(
+      v.object({
+        url: v.string(),
+        title: v.string()
+      })
+    )
+  },
+  handler: async (ctx, { ownerKey, bookmarks }) => {
+    const board = await ensureDefaultBoard(ctx, ownerKey)
+    let added = 0
+    let skipped = 0
+    const existingWebsites = await ctx.db.query('websites').collect()
+    const urlMap = new Map(existingWebsites.map(w => [w.canonicalUrl, w]))
+
+    const existingItems = await ctx.db
+      .query('boardItems')
+      .withIndex('by_ownerKey', q => q.eq('ownerKey', ownerKey))
+      .collect()
+    const existingWebsiteIds = new Set(existingItems.map(i => i.websiteId))
+
+    const now = Date.now()
+
+    for (const bm of bookmarks) {
+      const canonicalUrl = bm.url.replace(/\/$/, '') + '/'
+      const origin = (() => {
+        try {
+          return new URL(bm.url).hostname.replace(/^www\./, '')
+        } catch {
+          return ''
+        }
+      })()
+      if (!origin) continue
+
+      const existingWebsite = urlMap.get(canonicalUrl)
+      if (existingWebsite) {
+        if (existingWebsiteIds.has(existingWebsite._id)) {
+          skipped++
+          continue
+        }
+        await ctx.db.insert('boardItems', {
+          ownerKey,
+          boardId: board._id,
+          websiteId: existingWebsite._id,
+          notes: undefined,
+          createdAt: now
+        })
+        await ctx.db.patch(existingWebsite._id, {
+          saveCount: (existingWebsite.saveCount ?? 0) + 1,
+          updatedAt: now
+        })
+        added++
+        continue
+      }
+
+      const id = await ctx.db.insert('websites', {
+        slug: slugify(bm.title || origin),
+        title: bm.title || origin,
+        description: `${bm.title || origin} — imported from bookmarks`,
+        origin,
+        canonicalUrl,
+        categories: [],
+        saveCount: 1,
+        publicSaveCount: 0,
+        createdAt: now,
+        updatedAt: now
+      })
+      urlMap.set(canonicalUrl, (await ctx.db.get(id))!)
+
+      await ctx.db.insert('boardItems', {
+        ownerKey,
+        boardId: board._id,
+        websiteId: id,
+        notes: undefined,
+        createdAt: now
+      })
+
+      added++
+    }
+
+    return { added, skipped }
   }
 })

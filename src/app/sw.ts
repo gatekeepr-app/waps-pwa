@@ -23,7 +23,7 @@ const manifest = self.__SW_MANIFEST || []
 // Precache build assets + your offline + icons (add your own as needed)
 precacheAndRoute([
   ...manifest,
-  { url: '/offline', revision: '1' },
+  { url: '/~offline', revision: '1' },
   { url: '/manifest.json', revision: '1' },
   { url: '/favicon/icon-192.png', revision: '1' },
   { url: '/favicon/icon-512.png', revision: '1' }
@@ -34,7 +34,7 @@ const offlineFallbackHandler = async (params: any) => {
   try {
     return await new NetworkFirst({ cacheName: 'html' }).handle(params)
   } catch {
-    const cached = await matchPrecache('/offline')
+    const cached = await matchPrecache('/~offline')
     return cached || Response.error()
   }
 }

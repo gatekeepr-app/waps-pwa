@@ -8,6 +8,7 @@ import {
   Mail,
   User as UserIcon
 } from 'lucide-react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import React, { useEffect, useMemo, useState } from 'react'
 
@@ -38,14 +39,7 @@ export default function WapsAuthPage() {
   }, [])
 
   return (
-    <div
-      className='grid min-h-screen place-items-center px-4 text-white'
-      style={{
-        background:
-          'radial-gradient(1000px 600px at 10% -10%, rgba(255,107,87,0.12), transparent 60%), ' +
-          'radial-gradient(900px 600px at 110% 10%, rgba(255,176,87,0.10), transparent 50%), #0B0B10'
-      }}
-    >
+    <div className='waps-bg grid min-h-screen place-items-center px-4 text-white'>
       {loading ? (
         <SkeletonCard />
       ) : me?.user ? (
@@ -59,18 +53,18 @@ export default function WapsAuthPage() {
 
 function SkeletonCard() {
   return (
-    <Card className='w-full max-w-md border-white/15 bg-white/10 text-white backdrop-blur-2xl'>
+    <Card className='waps-card w-full max-w-md'>
       <CardHeader className='space-y-2'>
         <div className='h-6 w-40 rounded bg-white/10' />
         <div className='h-4 w-64 rounded bg-white/10' />
       </CardHeader>
       <CardContent className='space-y-3'>
-        <div className='h-10 w-full rounded-xl bg-white/10' />
-        <div className='h-10 w-full rounded-xl bg-white/10' />
-        <div className='h-10 w-full rounded-xl bg-white/10' />
+        <div className='h-10 w-full rounded-xl bg-white/5' />
+        <div className='h-10 w-full rounded-xl bg-white/5' />
+        <div className='h-10 w-full rounded-xl bg-white/5' />
       </CardContent>
       <CardFooter>
-        <div className='h-9 w-full rounded-xl bg-white/10' />
+        <div className='h-9 w-full rounded-xl bg-white/5' />
       </CardFooter>
     </Card>
   )
@@ -83,18 +77,16 @@ function AuthedView({
   me: MeResponse
   onSignedOut: () => void
 }) {
-  const router = useRouter()
   const hello = useMemo(() => me.user?.name || me.user?.email || 'there', [me])
 
   async function handleSignOut() {
     await signOut()
-    localStorage.removeItem('waps:user') // remove on sign out
+    localStorage.removeItem('waps:user')
     onSignedOut()
-    // optional: router.push("/auth");
   }
 
   return (
-    <Card className='w-full max-w-md border-white/15 bg-white/10 text-white backdrop-blur-2xl'>
+    <Card className='waps-card w-full max-w-md'>
       <CardHeader>
         <div className='flex items-center gap-3'>
           <MiniLogo />
@@ -110,11 +102,7 @@ function AuthedView({
         </p>
       </CardContent>
       <CardFooter>
-        <Button
-          onClick={handleSignOut}
-          className='w-full text-white'
-          style={{ background: 'linear-gradient(135deg,#FF6B57,#FF8F69)' }}
-        >
+        <Button onClick={handleSignOut} className='waps-btn w-full'>
           Sign out
         </Button>
       </CardFooter>
@@ -175,7 +163,7 @@ function AuthCard({ onAuth }: { onAuth: () => void }) {
   }
 
   return (
-    <Card className='w-full max-w-md border-white/15 bg-white/10 text-white shadow-[0_10px_40px_rgba(0,0,0,0.35)] backdrop-blur-2xl'>
+    <Card className='waps-card w-full max-w-md'>
       <CardHeader>
         <div className='flex items-center gap-3'>
           <MiniLogo />
@@ -245,14 +233,7 @@ function AuthCard({ onAuth }: { onAuth: () => void }) {
                 </div>
               )}
 
-              <Button
-                type='submit'
-                disabled={busy}
-                className='w-full text-white'
-                style={{
-                  background: 'linear-gradient(135deg,#FF6B57,#FF8F69)'
-                }}
-              >
+              <Button type='submit' disabled={busy} className='waps-btn w-full'>
                 {busy ? (
                   <span className='inline-flex items-center gap-2'>
                     <Loader2 size={16} className='animate-spin' /> Signing in…
@@ -261,6 +242,12 @@ function AuthCard({ onAuth }: { onAuth: () => void }) {
                   'Sign in'
                 )}
               </Button>
+              <Link
+                href='/forgot-password'
+                className='block text-center text-xs text-white/50 hover:text-white/80'
+              >
+                Forgot password?
+              </Link>
             </form>
           </TabsContent>
 
@@ -322,14 +309,7 @@ function AuthCard({ onAuth }: { onAuth: () => void }) {
                 </div>
               )}
 
-              <Button
-                type='submit'
-                disabled={busy}
-                className='w-full text-white'
-                style={{
-                  background: 'linear-gradient(135deg,#FF6B57,#FF8F69)'
-                }}
-              >
+              <Button type='submit' disabled={busy} className='waps-btn w-full'>
                 {busy ? (
                   <span className='inline-flex items-center gap-2'>
                     <Loader2 size={16} className='animate-spin' /> Creating…

@@ -55,24 +55,17 @@ export default function ExplorePage() {
       .sort(([a], [b]) => a.localeCompare(b))
   }, [items])
 
-  const ambientBg =
-    'radial-gradient(1000px 600px at 10% -10%, rgba(255,107,87,0.14), transparent 60%), ' +
-    'radial-gradient(900px 600px at 110% 10%, rgba(255,176,87,0.10), transparent 50%), #0B0B10'
-
   return (
-    <div
-      className='relative min-h-screen space-y-5 px-4 pb-6 pt-6 text-white'
-      style={{ background: ambientBg }}
-    >
+    <div className='waps-bg relative min-h-screen space-y-5 px-4 pb-6 pt-6 text-white'>
       {/* Sticky search */}
       <div className='sticky top-2 z-10'>
-        <div className='flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 px-3 py-2 backdrop-blur-xl'>
-          <Search className='h-4 w-4 text-zinc-400' />
+        <div className='flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 backdrop-blur-xl'>
+          <Search className='h-4 w-4 text-white/40' />
           <Input
             value={query}
             onChange={e => setQuery(e.currentTarget.value)}
             placeholder='Search public Waps'
-            className='h-8 border-0 bg-transparent px-0 text-white placeholder:text-zinc-400 focus-visible:ring-0'
+            className='h-8 border-0 bg-transparent px-0 text-white placeholder:text-white/40 focus-visible:ring-0'
           />
         </div>
       </div>
@@ -87,13 +80,15 @@ export default function ExplorePage() {
           grouped.map(([category, rows]) => (
             <section key={category} className='space-y-2'>
               <div className='flex items-center justify-between px-1'>
-                <h2 className='text-sm font-semibold'>{category}</h2>
-                <span className='text-xs text-zinc-400'>
-                  {rows.length} apps
+                <h2 className='text-base font-semibold tracking-tight'>
+                  {category}
+                </h2>
+                <span className='waps-chip text-[10px] opacity-80'>
+                  {rows.length}
                 </span>
               </div>
 
-              <div className='snap-x snap-mandatory overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900/60 p-3 backdrop-blur-xl [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
+              <div className='waps-card snap-x snap-mandatory overflow-x-auto rounded-2xl p-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
                 <div className='flex gap-4'>
                   {rows.map(w => (
                     <WapCardSquare
@@ -120,7 +115,7 @@ export default function ExplorePage() {
 
 function EmptyState() {
   return (
-    <div className='rounded-2xl border border-zinc-800 bg-zinc-900/70 p-6 text-center text-zinc-300 backdrop-blur-xl'>
+    <div className='waps-card rounded-2xl p-6 text-center'>
       Nothing to explore yet. Try adjusting your search or check back soon.
     </div>
   )
@@ -132,12 +127,12 @@ function SkeletonList() {
       {Array.from({ length: 2 }).map((_, i) => (
         <div key={i} className='space-y-2'>
           <div className='h-4 w-40 rounded bg-white/10' />
-          <div className='overflow-x-hidden rounded-2xl border border-zinc-800 bg-zinc-900/60 p-3'>
+          <div className='waps-card overflow-x-hidden rounded-2xl p-3'>
             <div className='flex gap-4'>
               {Array.from({ length: 6 }).map((_, j) => (
                 <div
                   key={j}
-                  className='aspect-square w-[150px] rounded-3xl border border-zinc-800 bg-zinc-900/70'
+                  className='aspect-square w-[150px] rounded-3xl bg-white/5'
                 />
               ))}
             </div>

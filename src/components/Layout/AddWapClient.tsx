@@ -1,7 +1,13 @@
-// File: app/(app)/add/AddWapClient.tsx
 'use client'
 
 import { Badge } from '@/components/ui/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select'
 import { useAction, useMutation, useQuery } from 'convex/react'
 import {
   AlertTriangle,
@@ -19,6 +25,17 @@ import { Textarea } from '../ui/textarea'
 
 const SYSTEM_OWNER = 'seed'
 const SYSTEM_BOARD_SLUG = 'discover'
+
+const CATEGORIES = [
+  'Design',
+  'Productivity',
+  'Dev & Infra',
+  'Reading',
+  'Education',
+  'Music & Audio',
+  'Video',
+  'Tools'
+] as const
 
 type Status =
   | 'idle'
@@ -56,8 +73,22 @@ function errText(e: unknown) {
   return e instanceof Error ? e.message : String(e ?? 'Unknown error')
 }
 
+function useOwnerKey() {
+  const [ownerKey, setOwnerKey] = useState<string | null>(null)
+  useEffect(() => {
+    try {
+      const k =
+        localStorage.getItem('waps.ownerKey') ||
+        localStorage.getItem('wapsOwnerKey')
+      if (k) setOwnerKey(k)
+    } catch {}
+  }, [])
+  return ownerKey
+}
+
 export default function AddWapClient() {
   const searchParams = useSearchParams()
+  const localOwnerKey = useOwnerKey()
 
   const [rawUrl, setRawUrl] = useState('')
   const normalized = useMemo(() => normalizeToHomepage(rawUrl), [rawUrl])
@@ -65,8 +96,10 @@ export default function AddWapClient() {
   const [title, setTitle] = useState('')
   const [slug, setSlug] = useState('')
   const [category, setCategory] = useState('')
+  const [customCategory, setCustomCategory] = useState('')
   const [description, setDescription] = useState('')
   const [faviconUrl, setFaviconUrl] = useState('')
+  const [selectedBoard, setSelectedBoard] = useState('discover')
 
   const [status, setStatus] = useState<Status>('idle')
   const [message, setMessage] = useState<string | null>(null)
@@ -84,7 +117,11 @@ export default function AddWapClient() {
     }
   }, [url, title2, text])
 
-  // Convex
+  const userBoards = useQuery(
+    api.boards.listByOwnerKey,
+    localOwnerKey ? { ownerKey: localOwnerKey } : 'skip'
+  )
+
   const seedBoard = useQuery(api.boards.getByOwnerAndSlug, {
     ownerKey: SYSTEM_OWNER,
     slug: SYSTEM_BOARD_SLUG
@@ -100,6 +137,7 @@ export default function AddWapClient() {
   const ensurePublicBoard = useMutation(api.boards.ensurePublicBoard)
   const upsertWebsite = useMutation(api.websites.upsert)
   const addToBoard = useMutation(api.boardItems.addToBoard)
+  const addToDefault = useMutation(api.boardItems.addToDefault)
   const scanWithGemini = useAction(api.actions.websites.scanWithGemini)
 
   const scannedKeyRef = useRef<string | null>(null)
@@ -109,6 +147,7 @@ export default function AddWapClient() {
     setTitle('')
     setSlug('')
     setCategory('')
+    setCustomCategory('')
     setDescription('')
     setFaviconUrl('')
     setStatus('idle')
@@ -139,7 +178,11 @@ export default function AddWapClient() {
       setMessage('Wap found in database')
       setTitle(existing.title || normalized.origin)
       setSlug(existing.slug || slugify(existing.title || normalized.origin))
-      setCategory(existing.categories?.[0] || '')
+      const existingCat = existing.categories?.[0] || ''
+      setCategory(existingCat)
+      if (existingCat && !CATEGORIES.includes(existingCat as any)) {
+        setCustomCategory(existingCat)
+      }
       setDescription(existing.description || '')
       setFaviconUrl(existing.faviconUrl || guessFavicon(normalized.origin))
       scannedKeyRef.current = null
@@ -177,7 +220,6 @@ export default function AddWapClient() {
         setMessage(errText(e))
       }
     })()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [normalized?.canonicalUrl, existing])
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -189,14 +231,6 @@ export default function AddWapClient() {
     setMessage('Saving…')
 
     try {
-      const board =
-        seedBoard ??
-        (await ensurePublicBoard({
-          ownerKey: SYSTEM_OWNER,
-          slug: SYSTEM_BOARD_SLUG,
-          name: 'Discover'
-        }))
-
       const websiteId = await upsertWebsite({
         canonicalUrl: normalized.canonicalUrl,
         origin: normalized.origin,
@@ -207,19 +241,31 @@ export default function AddWapClient() {
         faviconUrl: faviconUrl || guessFavicon(normalized.origin)
       })
 
-      await addToBoard({
-        ownerKey: board.ownerKey,
-        boardId: board._id,
-        websiteId
-      })
+      if (localOwnerKey && selectedBoard === 'my') {
+        await addToDefault({ ownerKey: localOwnerKey, websiteId })
+      } else {
+        const board =
+          seedBoard ??
+          (await ensurePublicBoard({
+            ownerKey: SYSTEM_OWNER,
+            slug: SYSTEM_BOARD_SLUG,
+            name: 'Discover'
+          }))
+
+        await addToBoard({
+          ownerKey: board.ownerKey,
+          boardId: board._id,
+          websiteId
+        })
+      }
 
       setStatus('found')
-      setMessage('Added to the public board!')
+      setMessage('Saved!')
+      resetForm()
     } catch (e) {
       setStatus('error')
       setMessage(errText(e))
     } finally {
-      resetForm()
       setBusySubmit(false)
     }
   }
@@ -229,25 +275,25 @@ export default function AddWapClient() {
       case 'checking':
         return (
           <Badge className='inline-flex items-center gap-1 border-zinc-700 bg-zinc-800 text-zinc-200'>
-            <Loader2 className='h-3.5 w-3.5 animate-spin' /> Checking database…
+            <Loader2 className='h-3.5 w-3.5 animate-spin' /> Checking…
           </Badge>
         )
       case 'found':
         return (
           <Badge className='inline-flex items-center gap-1 border-emerald-500/40 bg-emerald-500/20 text-emerald-200'>
-            <CheckCircle2 className='h-3.5 w-3.5' /> Wap found in database
+            <CheckCircle2 className='h-3.5 w-3.5' /> Found
           </Badge>
         )
       case 'scanning':
         return (
           <Badge className='inline-flex items-center gap-1 border-orange-500/40 bg-orange-500/20 text-orange-200'>
-            <Loader2 className='h-3.5 w-3.5 animate-spin' /> Scanning website…
+            <Loader2 className='h-3.5 w-3.5 animate-spin' /> Scanning…
           </Badge>
         )
       case 'new':
         return (
           <Badge className='border-violet-500/40 bg-violet-500/20 text-violet-200'>
-            You are adding a new Wap!!
+            New Wap!
           </Badge>
         )
       case 'saving':
@@ -259,8 +305,7 @@ export default function AddWapClient() {
       case 'error':
         return (
           <Badge className='inline-flex items-center gap-1 border-red-500/40 bg-red-500/20 text-red-200'>
-            <AlertTriangle className='h-3.5 w-3.5' />{' '}
-            {message || 'Something went wrong'}
+            <AlertTriangle className='h-3.5 w-3.5' /> {message || 'Error'}
           </Badge>
         )
       default:
@@ -268,66 +313,55 @@ export default function AddWapClient() {
     }
   }, [status, message])
 
-  const ambientBg =
-    'radial-gradient(1000px 600px at 10% -10%, rgba(255,107,87,0.14), transparent 60%), ' +
-    'radial-gradient(900px 600px at 110% 10%, rgba(255,176,87,0.10), transparent 50%), #0B0B10'
-
   return (
-    <main
-      className='min-h-dvh px-4 pb-24 pt-3 text-white'
-      style={{ background: ambientBg }}
-    >
+    <main className='waps-bg min-h-dvh px-4 pb-24 pt-3 text-white'>
       <div className='mx-auto w-full max-w-screen-sm space-y-5'>
         {/* Header card */}
-        <div className='rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 backdrop-blur-xl'>
+        <div className='waps-card rounded-2xl p-4'>
           <div className='flex items-center gap-2'>
-            <div
-              className='grid h-9 w-9 place-items-center rounded-xl'
-              style={{
-                background: 'linear-gradient(135deg, #FF6B57, #FFB057)'
-              }}
-            >
+            <div className='waps-brand-bg grid h-9 w-9 place-items-center rounded-xl'>
               <Globe className='h-5 w-5 text-white' />
             </div>
             <div className='min-w-0'>
               <h1 className='font-semibold'>Add a website</h1>
-              <p className='text-xs text-zinc-400'>
-                This will be added to{' '}
-                <span className='text-zinc-200'>{SYSTEM_OWNER}</span>/
-                <span className='text-zinc-200'>{SYSTEM_BOARD_SLUG}</span>
+              <p className='text-xs text-white/50'>
+                Save to:{' '}
+                {localOwnerKey && selectedBoard === 'my'
+                  ? 'your Waps'
+                  : `${SYSTEM_OWNER}/${SYSTEM_BOARD_SLUG} (public)`}
               </p>
             </div>
             <div className='ml-auto'>{badge}</div>
           </div>
 
-          <div className='mt-3 flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2'>
+          <div className='mt-3 flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2'>
             <Input
               value={rawUrl}
               onChange={e => setRawUrl(e.currentTarget.value)}
               placeholder='https://example.com/page'
-              className='h-9 border-0 bg-transparent px-0 placeholder:text-zinc-400 focus-visible:ring-0'
+              className='h-9 border-0 bg-transparent px-0 placeholder:text-white/40 focus-visible:ring-0'
               autoFocus
             />
           </div>
 
           {normalized?.origin && (
-            <p className='mt-2 text-xs text-zinc-400'>
-              Checking homepage:{' '}
-              <span className='text-zinc-200'>
+            <p className='mt-2 text-xs text-white/50'>
+              Homepage:{' '}
+              <span className='text-white/80'>
                 https://{normalized.origin}/
               </span>
             </p>
           )}
 
           {message && status !== 'error' && (
-            <p className='mt-2 text-xs text-zinc-400'>{message}</p>
+            <p className='mt-2 text-xs text-white/50'>{message}</p>
           )}
         </div>
 
         {/* Form card */}
         <form
           onSubmit={onSubmit}
-          className='space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 backdrop-blur-xl'
+          className='waps-card space-y-4 rounded-2xl p-4'
         >
           <Field label='Title'>
             <Input
@@ -338,7 +372,7 @@ export default function AddWapClient() {
                 if (!slug) setSlug(slugify(v))
               }}
               placeholder='Website name'
-              className='h-9 border-0 bg-zinc-800/60'
+              className='h-9 border-0 bg-white/5'
             />
           </Field>
 
@@ -346,18 +380,46 @@ export default function AddWapClient() {
             <Input
               value={slug}
               onChange={e => setSlug(slugify(e.currentTarget.value))}
-              placeholder='auto-generated-from-title'
-              className='h-9 border-0 bg-zinc-800/60'
+              placeholder='auto-generated'
+              className='h-9 border-0 bg-white/5'
             />
           </Field>
 
-          <Field label='Category (suggested)'>
-            <Input
-              value={category}
-              onChange={e => setCategory(e.currentTarget.value)}
-              placeholder='e.g., Productivity'
-              className='h-9 border-0 bg-zinc-800/60'
-            />
+          <Field label='Category'>
+            <Select
+              value={CATEGORIES.includes(category as any) ? category : 'other'}
+              onValueChange={v => {
+                if (v === 'other') {
+                  setCategory(customCategory || '')
+                } else {
+                  setCategory(v)
+                  setCustomCategory('')
+                }
+              }}
+            >
+              <SelectTrigger className='h-9 border border-white/10 bg-white/5 text-white'>
+                <SelectValue placeholder='Select a category' />
+              </SelectTrigger>
+              <SelectContent className='border-white/10 bg-zinc-900 text-white'>
+                {CATEGORIES.map(c => (
+                  <SelectItem key={c} value={c}>
+                    {c}
+                  </SelectItem>
+                ))}
+                <SelectItem value='other'>Other…</SelectItem>
+              </SelectContent>
+            </Select>
+            {category && !CATEGORIES.includes(category as any) && (
+              <Input
+                value={customCategory}
+                onChange={e => {
+                  setCustomCategory(e.currentTarget.value)
+                  setCategory(e.currentTarget.value)
+                }}
+                placeholder='Type a custom category'
+                className='mt-2 h-9 border-0 bg-white/5'
+              />
+            )}
           </Field>
 
           <Field label='Description'>
@@ -366,7 +428,7 @@ export default function AddWapClient() {
               onChange={e => setDescription(e.currentTarget.value)}
               rows={5}
               placeholder='A detailed paragraph about what the website does…'
-              className='border-0 bg-zinc-800/60'
+              className='border-0 bg-white/5'
             />
           </Field>
 
@@ -375,9 +437,37 @@ export default function AddWapClient() {
               value={faviconUrl}
               onChange={e => setFaviconUrl(e.currentTarget.value)}
               placeholder='https://…/favicon.ico'
-              className='h-9 border-0 bg-zinc-800/60'
+              className='h-9 border-0 bg-white/5'
             />
           </Field>
+
+          {/* Board selector */}
+          {localOwnerKey && (
+            <Field label='Save to'>
+              <div className='flex gap-2'>
+                <Select value={selectedBoard} onValueChange={setSelectedBoard}>
+                  <SelectTrigger className='flex-1 border border-white/10 bg-white/5 text-white'>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className='border-white/10 bg-zinc-900 text-white'>
+                    <SelectItem value='discover'>
+                      Public board (Discover)
+                    </SelectItem>
+                    <SelectItem value='my'>
+                      My Waps (your default board)
+                    </SelectItem>
+                    {userBoards
+                      ?.filter(b => b.slug !== 'default')
+                      .map(b => (
+                        <SelectItem key={b._id} value={b._id}>
+                          {b.name} {b.isPublic ? '(public)' : '(private)'}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </Field>
+          )}
 
           <div className='pt-2'>
             <Button
@@ -389,40 +479,26 @@ export default function AddWapClient() {
                 !description.trim() ||
                 busySubmit
               }
-              className='inline-flex w-full items-center gap-2 text-white'
-              style={{
-                background: 'linear-gradient(135deg, #FF6B57, #FF8F69)'
-              }}
+              className='waps-btn inline-flex w-full items-center gap-2'
             >
               {busySubmit ? (
                 <>
                   <Loader2 className='h-4 w-4 animate-spin' /> Saving…
                 </>
-              ) : status === 'found' ? (
-                <>
-                  <PlusCircle className='h-4 w-4' /> Add to {SYSTEM_BOARD_SLUG}
-                </>
               ) : (
                 <>
-                  <PlusCircle className='h-4 w-4' /> Create & add
+                  <PlusCircle className='h-4 w-4' />{' '}
+                  {selectedBoard === 'my'
+                    ? 'Save to my Waps'
+                    : 'Add to Discover'}
                 </>
               )}
             </Button>
           </div>
-
-          {/* Seed board availability note */}
-          {seedBoard === null && (
-            <p className='text-xs text-amber-300'>
-              Heads up: Board <b>{SYSTEM_BOARD_SLUG}</b> for owner{' '}
-              <b>{SYSTEM_OWNER}</b> was not found. Create it (public) first or
-              change the constants at the top of this page.
-            </p>
-          )}
         </form>
 
-        {/* Small favicon preview */}
         {faviconUrl ? (
-          <div className='flex items-center gap-2 text-xs text-zinc-400'>
+          <div className='flex items-center gap-2 text-xs text-white/50'>
             <span>Favicon preview:</span>
             <img
               src={faviconUrl}
@@ -438,7 +514,6 @@ export default function AddWapClient() {
   )
 }
 
-/** ---------- subcomponents ---------- */
 function Field({
   label,
   children
@@ -448,10 +523,10 @@ function Field({
 }) {
   return (
     <label className='block'>
-      <div className='mb-1 text-xs uppercase tracking-wide text-zinc-400'>
+      <div className='mb-1 text-xs uppercase tracking-wide text-white/50'>
         {label}
       </div>
-      <div className='rounded-xl border border-zinc-800 bg-zinc-900/70 p-2'>
+      <div className='rounded-xl border border-white/10 bg-white/5 p-2'>
         {children}
       </div>
     </label>
