@@ -136,10 +136,10 @@ export default function WapsPage() {
             <DropdownMenuTrigger asChild>
               <Button
                 variant='outline'
-                className='rounded-xl border border-[var(--waps-border)] bg-transparent text-white hover:bg-white/10'
+                className='rounded-xl border border-[var(--waps-border)] bg-transparent px-3 text-white hover:bg-white/10'
+                aria-label={`Sort: ${labelForSort(sort)}`}
               >
-                <SlidersHorizontal className='mr-2 h-4 w-4' />
-                Sort: {labelForSort(sort)}
+                <SlidersHorizontal className='h-4 w-4' />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align='end' className='waps-card rounded-xl'>
@@ -164,7 +164,7 @@ export default function WapsPage() {
       </div>
 
       {/* Tag chips */}
-      <div className='mt-5 flex flex-wrap items-center gap-2'>
+      <div className='mt-5 flex items-center gap-2 overflow-x-auto whitespace-nowrap [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
         <button
           className={clsx(
             'waps-chip',
