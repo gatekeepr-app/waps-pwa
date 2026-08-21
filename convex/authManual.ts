@@ -5,6 +5,17 @@ const ITERATIONS = 100_000
 const KEY_LENGTH = 32
 const ALGORITHM = 'PBKDF2'
 const HASH_ALGORITHM = 'SHA-256'
+const PREFIX = 'pbkdf2$'
+
+/** The authAccounts schema has no salt field, so the salt is embedded in
+ *  the secret with a version prefix: "pbkdf2$<saltHex>$<hashHex>". */
+function encodeSecret(salt: string, hash: string): string {
+  return `${PREFIX}${salt}$${hash}`
+}
+
+function isCurrentSecret(secret: string): boolean {
+  return secret.startsWith(PREFIX)
+}
 
 async function hashPassword(
   password: string,
@@ -41,9 +52,11 @@ async function hashPassword(
 
 async function verifyPassword(
   password: string,
-  storedHash: string,
-  storedSalt: string
+  secret: string
 ): Promise<boolean> {
+  const parts = secret.slice(PREFIX.length).split('$')
+  if (parts.length !== 2) return false
+  const [storedSalt, storedHash] = parts
   const { hash } = await hashPassword(password, hexToBytes(storedSalt))
   return timingSafeEqual(hash, storedHash)
 }
@@ -75,6 +88,29 @@ async function sha256Hex(input: string): Promise<string> {
     .join('')
 }
 
+/** Verify pre-PBKDF2 credentials. Two legacy shapes exist in production:
+ *  - "saltHex:hashHex" (salted SHA-256, salt concatenation order unknown)
+ *  - bare hashHex (unsalted SHA-256 of the password)
+ *  All derivations are compared timing-safely; success upgrades to PBKDF2. */
+async function verifyLegacySecret(
+  password: string,
+  secret: string
+): Promise<boolean> {
+  const colonIdx = secret.indexOf(':')
+  if (colonIdx > 0) {
+    const s = secret.slice(0, colonIdx)
+    const h = secret.slice(colonIdx + 1)
+    const candidates = [
+      await sha256Hex(s + password),
+      await sha256Hex(password + s),
+      await sha256Hex(`${s}:${password}`),
+      await sha256Hex(`${password}:${s}`)
+    ]
+    return candidates.some(c => timingSafeEqual(c, h))
+  }
+  return timingSafeEqual(await sha256Hex(password), secret)
+}
+
 /** Look up user by email */
 export const getUserByEmail = query({
   args: { email: v.string() },
@@ -88,9 +124,9 @@ export const getUserByEmail = query({
 
 /** Verify email + password against authAccounts (Password provider).
  *  Supports legacy credential formats and transparently upgrades them to PBKDF2:
- *  - authAccounts row with salt          -> PBKDF2 (current)
- *  - authAccounts row without salt       -> legacy unsalted SHA-256
- *  - no authAccounts row                 -> legacy bcrypt passwordHash on user doc
+ *  - "pbkdf2$<salt>$<hash>" secret -> PBKDF2 (current)
+ *  - "salt:hash" or bare hash secret -> legacy SHA-256
+ *  - no authAccounts row -> legacy bcrypt passwordHash on user doc
  */
 export const verifyCredentials = mutation({
   args: { email: v.string(), password: v.string() },
@@ -112,13 +148,11 @@ export const verifyCredentials = mutation({
 
     if (account) {
       const secret = (account as any).secret as string | undefined
-      const salt = (account as any).salt as string | undefined
       if (!secret) throw new Error('Invalid email or password')
-      if (salt) {
-        valid = await verifyPassword(password, secret, salt)
+      if (isCurrentSecret(secret)) {
+        valid = await verifyPassword(password, secret)
       } else {
-        const legacyHash = await sha256Hex(password)
-        valid = timingSafeEqual(legacyHash, secret)
+        valid = await verifyLegacySecret(password, secret)
       }
     } else {
       const bcryptHash = (user as any).passwordHash as string | undefined
@@ -129,19 +163,19 @@ export const verifyCredentials = mutation({
 
     if (!valid) throw new Error('Invalid email or password')
 
-    // Upgrade legacy credentials to PBKDF2
+    // Upgrade legacy credentials to the current format
     const { hash, salt } = await hashPassword(password)
+    const encoded = encodeSecret(salt, hash)
     if (account) {
-      if (!(account as any).salt) {
-        await ctx.db.patch(account._id, { secret: hash, salt } as any)
+      if (!isCurrentSecret((account as any).secret)) {
+        await ctx.db.patch(account._id, { secret: encoded } as any)
       }
     } else {
       await ctx.db.insert('authAccounts', {
         userId: user._id,
         provider: 'password',
         providerAccountId: email,
-        secret: hash,
-        salt
+        secret: encoded
       } as any)
     }
 
@@ -174,8 +208,7 @@ export const signup = mutation({
       userId,
       provider: 'password',
       providerAccountId: email,
-      secret: hash,
-      salt
+      secret: encodeSecret(salt, hash)
     } as any)
 
     return { userId }
@@ -262,7 +295,7 @@ export const resetPassword = mutation({
     if (!account) throw new Error('No password account found')
 
     const { hash, salt } = await hashPassword(newPassword)
-    await ctx.db.patch(account._id, { secret: hash, salt } as any)
+    await ctx.db.patch(account._id, { secret: encodeSecret(salt, hash) } as any)
     await ctx.db.patch(doc._id, { consumed: true })
 
     return { ok: true }

@@ -128,8 +128,22 @@ http.route({
         headers: { 'Content-Type': 'application/json' }
       })
     }
-    const doc = await ctx.runQuery(api.pairing.resolvePairingCode, { code })
-    if (!doc) {
+    const forwardedFor = request.headers.get('x-forwarded-for') ?? undefined
+    const ip = forwardedFor?.split(',')[0]?.trim() || undefined
+    const doc = await ctx.runMutation(api.pairing.redeemPairingCode, {
+      code,
+      ip
+    })
+    if ('error' in doc && doc.error === 'rate_limited') {
+      return new Response(
+        JSON.stringify({ error: 'Too many attempts, try again later' }),
+        {
+          status: 429,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      )
+    }
+    if ('error' in doc || !doc.apiKey) {
       return new Response(
         JSON.stringify({ error: 'Code not found or expired' }),
         {

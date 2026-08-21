@@ -53,6 +53,11 @@ const schema = defineSchema({
     convexUrl: v.string(),
     createdAt: v.number()
   }).index('by_code', ['code']),
+  pairingAttempts: defineTable({
+    identifier: v.string(),
+    attempts: v.number(),
+    windowStart: v.number()
+  }).index('by_identifier', ['identifier']),
   resetTokens: defineTable({
     email: v.string(),
     token: v.string(),

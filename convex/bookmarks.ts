@@ -184,14 +184,30 @@ export const togglePublic = mutation({
   }
 })
 
+function publicView(b: any) {
+  return {
+    _id: b._id,
+    _creationTime: b._creationTime,
+    url: b.url,
+    title: b.title,
+    description: b.description,
+    favicon: b.favicon,
+    image: b.image,
+    tags: b.tags,
+    isPinned: b.isPinned,
+    publicId: b.publicId
+  }
+}
+
 export const listPublic = query({
   args: {},
   handler: async ctx => {
-    return await ctx.db
+    const all = await ctx.db
       .query('bookmarks')
       .withIndex('by_public', (q: any) => q.eq('isPublic', true))
       .order('desc')
       .collect()
+    return all.map(publicView)
   }
 })
 
@@ -616,10 +632,11 @@ export const addByHttp = mutation({
 export const getByPublicId = query({
   args: { publicId: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const b = await ctx.db
       .query('bookmarks')
       .withIndex('by_publicId', (q: any) => q.eq('publicId', args.publicId))
       .first()
+    return b ? publicView(b) : null
   }
 })
 
