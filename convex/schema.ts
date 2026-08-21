@@ -27,6 +27,7 @@ const schema = defineSchema({
   })
     .index('by_user', ['userId'])
     .index('by_user_url', ['userId', 'url'])
+    .index('by_url', ['url'])
     .index('by_user_category', ['userId', 'categoryId'])
     .index('by_remindAt', ['remindAt'])
     .index('by_publicId', ['publicId'])

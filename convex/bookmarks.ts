@@ -92,6 +92,68 @@ export const getById = query({
   }
 })
 
+/** Normalize a URL: default scheme, lowercase host, drop www and
+ *  trailing slashes, keep path/query, drop hash. Returns null if invalid. */
+export function normalizeUrlInput(raw: string): string | null {
+  let s = raw.trim()
+  if (!s) return null
+  if (!/^https?:\/\//i.test(s)) s = 'https://' + s
+  let u: URL
+  try {
+    u = new URL(s)
+  } catch {
+    return null
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return null
+  const host = u.hostname.toLowerCase().replace(/^www\./, '')
+  const path = u.pathname.replace(/\/+$/, '')
+  return `${u.protocol}//${host}${path}${u.search}`
+}
+
+/** Candidate stored forms that normalize to the same URL as `raw`
+ *  (covers rows saved before normalization existed). */
+function urlVariants(raw: string): string[] {
+  const normalized = normalizeUrlInput(raw)
+  if (!normalized) return []
+  let u: URL
+  try {
+    u = new URL(normalized)
+  } catch {
+    return [normalized]
+  }
+  const hosts = [u.hostname]
+  if (!u.hostname.startsWith('www.')) hosts.push('www.' + u.hostname)
+  const paths = [u.pathname]
+  if (u.pathname.endsWith('/')) paths.push(u.pathname.slice(0, -1))
+  else if (u.pathname !== '/') paths.push(u.pathname + '/')
+  const out = new Set<string>()
+  for (const proto of ['https:', 'http:']) {
+    for (const h of hosts) {
+      for (const p of paths) {
+        out.add(`${proto}//${h}${p}${u.search}`)
+      }
+    }
+  }
+  return Array.from(out)
+}
+
+async function findExisting(
+  ctx: any,
+  userId: any,
+  rawUrl: string
+): Promise<any | null> {
+  for (const candidate of urlVariants(rawUrl)) {
+    const hit = await ctx.db
+      .query('bookmarks')
+      .withIndex('by_user_url', (q: any) =>
+        q.eq('userId', userId).eq('url', candidate)
+      )
+      .first()
+    if (hit) return hit
+  }
+  return null
+}
+
 export const add = mutation({
   args: {
     sessionToken: v.optional(v.string()),
@@ -99,29 +161,28 @@ export const add = mutation({
     title: v.optional(v.string()),
     description: v.optional(v.string()),
     collectionId: v.optional(v.id('collections')),
-    categoryId: v.optional(v.id('categories'))
+    categoryId: v.optional(v.id('categories')),
+    isPublic: v.optional(v.boolean())
   },
   handler: async (ctx, args) => {
     const userId = await resolveUserId(ctx, (args as any).sessionToken)
     if (!userId) throw new Error('Not authenticated')
-    const existing = await ctx.db
-      .query('bookmarks')
-      .withIndex('by_user_url', (q: any) =>
-        q.eq('userId', userId).eq('url', args.url)
-      )
-      .first()
+    const url = normalizeUrlInput(args.url)
+    if (!url) throw new Error('Invalid URL')
+    const existing = await findExisting(ctx, userId, url)
     if (existing) throw new Error('Bookmark already exists')
     const bookmarkId = await ctx.db.insert('bookmarks', {
       userId,
-      url: args.url,
+      url,
       title: args.title,
       description: args.description,
       collectionId: args.collectionId,
-      categoryId: args.categoryId
+      categoryId: args.categoryId,
+      isPublic: args.isPublic
     })
     await ctx.scheduler.runAfter(0, (internal as any).metadata.fetchMetadata, {
       bookmarkId,
-      url: args.url
+      url
     })
     return bookmarkId
   }
@@ -132,22 +193,53 @@ export const shareQuickAdd = mutation({
   handler: async (ctx, args) => {
     const userId = await resolveUserId(ctx, (args as any).sessionToken)
     if (!userId) throw new Error('Not authenticated')
-    const existing = await ctx.db
-      .query('bookmarks')
-      .withIndex('by_user_url', (q: any) =>
-        q.eq('userId', userId).eq('url', args.url)
-      )
-      .first()
+    const url = normalizeUrlInput(args.url)
+    if (!url) throw new Error('Invalid URL')
+    const existing = await findExisting(ctx, userId, url)
     if (existing) return existing._id
     const bookmarkId = await ctx.db.insert('bookmarks', {
       userId,
-      url: args.url
+      url
     })
     await ctx.scheduler.runAfter(0, (internal as any).metadata.fetchMetadata, {
       bookmarkId,
-      url: args.url
+      url
     })
     return bookmarkId
+  }
+})
+
+/** Live check while typing: has THIS user already saved this URL? */
+export const checkDuplicate = query({
+  args: { sessionToken: v.optional(v.string()), url: v.string() },
+  handler: async (ctx, args) => {
+    const userId = await resolveUserId(ctx, args.sessionToken)
+    if (!userId || !normalizeUrlInput(args.url)) return { exists: false }
+    const existing = await findExisting(ctx, userId, args.url)
+    return { exists: !!existing, bookmarkId: existing?._id ?? null }
+  }
+})
+
+/** Cross-user signal: how many distinct users have saved this URL?
+ *  Powers the "people are loving this link" nudge. */
+export const linkPopularity = query({
+  args: { url: v.string(), sessionToken: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    if (!normalizeUrlInput(args.url)) return { users: 0, mine: false }
+    const me = await resolveUserId(ctx, args.sessionToken)
+    const users = new Set<string>()
+    let mine = false
+    for (const candidate of urlVariants(args.url)) {
+      const hits = await ctx.db
+        .query('bookmarks')
+        .withIndex('by_url', (q: any) => q.eq('url', candidate))
+        .collect()
+      for (const h of hits) {
+        users.add(h.userId)
+        if (h.userId === me) mine = true
+      }
+    }
+    return { users: users.size, mine }
   }
 })
 
@@ -320,17 +412,16 @@ export const importAll = mutation({
   handler: async (ctx, args) => {
     const userId = await resolveUserId(ctx, (args as any).sessionToken)
     if (!userId) throw new Error('Not authenticated')
+    const seen = new Set<string>()
     for (const b of args.bookmarks) {
-      const existing = await ctx.db
-        .query('bookmarks')
-        .withIndex('by_user_url', (q: any) =>
-          q.eq('userId', userId).eq('url', b.url)
-        )
-        .first()
+      const url = normalizeUrlInput(b.url)
+      if (!url || seen.has(url)) continue
+      seen.add(url)
+      const existing = await findExisting(ctx, userId, url)
       if (!existing) {
         const id = await ctx.db.insert('bookmarks', {
           userId,
-          url: b.url,
+          url,
           title: b.title,
           description: b.description,
           tags: b.tags
@@ -338,7 +429,7 @@ export const importAll = mutation({
         await ctx.scheduler.runAfter(
           0,
           (internal as any).metadata.fetchMetadata,
-          { bookmarkId: id, url: b.url }
+          { bookmarkId: id, url }
         )
       }
     }
@@ -609,21 +700,18 @@ export const addByHttp = mutation({
     title: v.optional(v.string())
   },
   handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query('bookmarks')
-      .withIndex('by_user_url', (q: any) =>
-        q.eq('userId', args.userId).eq('url', args.url)
-      )
-      .first()
+    const url = normalizeUrlInput(args.url)
+    if (!url) throw new Error('Invalid URL')
+    const existing = await findExisting(ctx, args.userId, url)
     if (existing) throw new Error('Bookmark already exists')
     const id = await ctx.db.insert('bookmarks', {
       userId: args.userId,
-      url: args.url,
+      url,
       title: args.title
     })
     await ctx.scheduler.runAfter(0, (internal as any).metadata.fetchMetadata, {
       bookmarkId: id,
-      url: args.url
+      url
     })
     return id
   }
