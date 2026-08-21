@@ -94,6 +94,7 @@ export const getById = query({
 
 export const add = mutation({
   args: {
+    sessionToken: v.optional(v.string()),
     url: v.string(),
     title: v.optional(v.string()),
     description: v.optional(v.string()),
@@ -101,7 +102,7 @@ export const add = mutation({
     categoryId: v.optional(v.id('categories'))
   },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx)
+    const userId = await resolveUserId(ctx, (args as any).sessionToken)
     if (!userId) throw new Error('Not authenticated')
     const existing = await ctx.db
       .query('bookmarks')
@@ -127,9 +128,9 @@ export const add = mutation({
 })
 
 export const shareQuickAdd = mutation({
-  args: { url: v.string() },
+  args: { sessionToken: v.optional(v.string()), url: v.string() },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx)
+    const userId = await resolveUserId(ctx, (args as any).sessionToken)
     if (!userId) throw new Error('Not authenticated')
     const existing = await ctx.db
       .query('bookmarks')
@@ -151,9 +152,9 @@ export const shareQuickAdd = mutation({
 })
 
 export const togglePin = mutation({
-  args: { id: v.id('bookmarks') },
+  args: { id: v.id('bookmarks'), sessionToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx)
+    const userId = await resolveUserId(ctx, (args as any).sessionToken)
     if (!userId) throw new Error('Not authenticated')
     const b = await ctx.db.get(args.id)
     if (!b || b.userId !== userId) throw new Error('Not found')
@@ -162,9 +163,9 @@ export const togglePin = mutation({
 })
 
 export const toggleRead = mutation({
-  args: { id: v.id('bookmarks') },
+  args: { id: v.id('bookmarks'), sessionToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx)
+    const userId = await resolveUserId(ctx, (args as any).sessionToken)
     if (!userId) throw new Error('Not authenticated')
     const b = await ctx.db.get(args.id)
     if (!b || b.userId !== userId) throw new Error('Not found')
@@ -173,9 +174,9 @@ export const toggleRead = mutation({
 })
 
 export const togglePublic = mutation({
-  args: { id: v.id('bookmarks') },
+  args: { id: v.id('bookmarks'), sessionToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx)
+    const userId = await resolveUserId(ctx, (args as any).sessionToken)
     if (!userId) throw new Error('Not authenticated')
     const b = await ctx.db.get(args.id)
     if (!b || b.userId !== userId) throw new Error('Not found')
@@ -195,9 +196,13 @@ export const listPublic = query({
 })
 
 export const addTag = mutation({
-  args: { id: v.id('bookmarks'), tag: v.string() },
+  args: {
+    id: v.id('bookmarks'),
+    tag: v.string(),
+    sessionToken: v.optional(v.string())
+  },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx)
+    const userId = await resolveUserId(ctx, (args as any).sessionToken)
     if (!userId) throw new Error('Not authenticated')
     const b = await ctx.db.get(args.id)
     if (!b || b.userId !== userId) throw new Error('Not found')
@@ -207,9 +212,13 @@ export const addTag = mutation({
 })
 
 export const removeTag = mutation({
-  args: { id: v.id('bookmarks'), tag: v.string() },
+  args: {
+    id: v.id('bookmarks'),
+    tag: v.string(),
+    sessionToken: v.optional(v.string())
+  },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx)
+    const userId = await resolveUserId(ctx, (args as any).sessionToken)
     if (!userId) throw new Error('Not authenticated')
     const b = await ctx.db.get(args.id)
     if (!b || b.userId !== userId) throw new Error('Not found')
@@ -219,9 +228,13 @@ export const removeTag = mutation({
 })
 
 export const setTags = mutation({
-  args: { bookmarkId: v.id('bookmarks'), tags: v.array(v.string()) },
+  args: {
+    bookmarkId: v.id('bookmarks'),
+    tags: v.array(v.string()),
+    sessionToken: v.optional(v.string())
+  },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx)
+    const userId = await resolveUserId(ctx, (args as any).sessionToken)
     if (!userId) throw new Error('Not authenticated')
     const b = await ctx.db.get(args.bookmarkId)
     if (!b || b.userId !== userId) throw new Error('Not found')
@@ -231,11 +244,12 @@ export const setTags = mutation({
 
 export const updateCollection = mutation({
   args: {
+    sessionToken: v.optional(v.string()),
     bookmarkId: v.id('bookmarks'),
     collectionId: v.optional(v.id('collections'))
   },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx)
+    const userId = await resolveUserId(ctx, (args as any).sessionToken)
     if (!userId) throw new Error('Not authenticated')
     const b = await ctx.db.get(args.bookmarkId)
     if (!b || b.userId !== userId) throw new Error('Not found')
@@ -244,9 +258,12 @@ export const updateCollection = mutation({
 })
 
 export const batchDelete = mutation({
-  args: { ids: v.array(v.id('bookmarks')) },
+  args: {
+    ids: v.array(v.id('bookmarks')),
+    sessionToken: v.optional(v.string())
+  },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx)
+    const userId = await resolveUserId(ctx, (args as any).sessionToken)
     if (!userId) throw new Error('Not authenticated')
     for (const id of args.ids) {
       const b = await ctx.db.get(id)
@@ -257,11 +274,12 @@ export const batchDelete = mutation({
 
 export const batchMoveCollection = mutation({
   args: {
+    sessionToken: v.optional(v.string()),
     ids: v.array(v.id('bookmarks')),
     collectionId: v.optional(v.id('collections'))
   },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx)
+    const userId = await resolveUserId(ctx, (args as any).sessionToken)
     if (!userId) throw new Error('Not authenticated')
     for (const id of args.ids) {
       const b = await ctx.db.get(id)
@@ -273,6 +291,7 @@ export const batchMoveCollection = mutation({
 
 export const importAll = mutation({
   args: {
+    sessionToken: v.optional(v.string()),
     bookmarks: v.array(
       v.object({
         url: v.string(),
@@ -283,7 +302,7 @@ export const importAll = mutation({
     )
   },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx)
+    const userId = await resolveUserId(ctx, (args as any).sessionToken)
     if (!userId) throw new Error('Not authenticated')
     for (const b of args.bookmarks) {
       const existing = await ctx.db
@@ -337,6 +356,7 @@ export const updateMetadata = internalMutation({
 
 export const update = mutation({
   args: {
+    sessionToken: v.optional(v.string()),
     id: v.id('bookmarks'),
     title: v.optional(v.string()),
     description: v.optional(v.string()),
@@ -344,7 +364,7 @@ export const update = mutation({
     categoryId: v.optional(v.id('categories'))
   },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx)
+    const userId = await resolveUserId(ctx, (args as any).sessionToken)
     if (!userId) throw new Error('Not authenticated')
     const b = await ctx.db.get(args.id)
     if (!b || b.userId !== userId) throw new Error('Not found')
@@ -358,9 +378,13 @@ export const update = mutation({
 })
 
 export const setReminder = mutation({
-  args: { id: v.id('bookmarks'), remindAt: v.optional(v.number()) },
+  args: {
+    id: v.id('bookmarks'),
+    remindAt: v.optional(v.number()),
+    sessionToken: v.optional(v.string())
+  },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx)
+    const userId = await resolveUserId(ctx, (args as any).sessionToken)
     if (!userId) throw new Error('Not authenticated')
     const b = await ctx.db.get(args.id)
     if (!b || b.userId !== userId) throw new Error('Not found')
@@ -369,9 +393,9 @@ export const setReminder = mutation({
 })
 
 export const remove = mutation({
-  args: { id: v.id('bookmarks') },
+  args: { id: v.id('bookmarks'), sessionToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx)
+    const userId = await resolveUserId(ctx, (args as any).sessionToken)
     if (!userId) throw new Error('Not authenticated')
     const bookmark = await ctx.db.get(args.id)
     if (!bookmark || bookmark.userId !== userId) throw new Error('Not found')
@@ -380,9 +404,9 @@ export const remove = mutation({
 })
 
 export const restore = mutation({
-  args: { id: v.id('bookmarks') },
+  args: { id: v.id('bookmarks'), sessionToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx)
+    const userId = await resolveUserId(ctx, (args as any).sessionToken)
     if (!userId) throw new Error('Not authenticated')
     const b = await ctx.db.get(args.id)
     if (!b || b.userId !== userId) throw new Error('Not found')
@@ -391,9 +415,9 @@ export const restore = mutation({
 })
 
 export const permanentDelete = mutation({
-  args: { id: v.id('bookmarks') },
+  args: { id: v.id('bookmarks'), sessionToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx)
+    const userId = await resolveUserId(ctx, (args as any).sessionToken)
     if (!userId) throw new Error('Not authenticated')
     const b = await ctx.db.get(args.id)
     if (!b || b.userId !== userId) throw new Error('Not found')
@@ -455,9 +479,13 @@ export const listAllTags = query({
 })
 
 export const renameTag = mutation({
-  args: { oldTag: v.string(), newTag: v.string() },
+  args: {
+    oldTag: v.string(),
+    newTag: v.string(),
+    sessionToken: v.optional(v.string())
+  },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx)
+    const userId = await resolveUserId(ctx, (args as any).sessionToken)
     if (!userId) throw new Error('Not authenticated')
     const all = await ctx.db
       .query('bookmarks')
@@ -491,9 +519,9 @@ export const purgeOldTrash = mutation({
 })
 
 export const removeTagFromAll = mutation({
-  args: { tag: v.string() },
+  args: { tag: v.string(), sessionToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx)
+    const userId = await resolveUserId(ctx, (args as any).sessionToken)
     if (!userId) throw new Error('Not authenticated')
     const all = await ctx.db
       .query('bookmarks')
@@ -547,9 +575,9 @@ export const listByUser = query({
 })
 
 export const getAll = query({
-  args: {},
-  handler: async ctx => {
-    const userId = await getAuthUserId(ctx)
+  args: { sessionToken: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const userId = await resolveUserId(ctx, args.sessionToken)
     if (!userId) return []
     return await ctx.db
       .query('bookmarks')
@@ -596,9 +624,9 @@ export const getByPublicId = query({
 })
 
 export const generateShareLink = mutation({
-  args: { id: v.id('bookmarks') },
+  args: { id: v.id('bookmarks'), sessionToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx)
+    const userId = await resolveUserId(ctx, (args as any).sessionToken)
     if (!userId) throw new Error('Not authenticated')
     const b = await ctx.db.get(args.id)
     if (!b || b.userId !== userId) throw new Error('Not found')

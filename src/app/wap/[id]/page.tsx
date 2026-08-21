@@ -26,7 +26,9 @@ export default function WapDetailPage({
   const { sessionToken, loading: sessionLoading } = useSession()
   const bookmark = useQuery(
     api.bookmarks.getById,
-    sessionToken ? { id: id as Id<'bookmarks'>, sessionToken } : 'skip'
+    sessionToken
+      ? { id: id as Id<'bookmarks'>, sessionToken: sessionToken ?? undefined }
+      : 'skip'
   )
   const togglePublic = useMutation(api.bookmarks.togglePublic)
   const remove = useMutation(api.bookmarks.remove)
@@ -50,7 +52,10 @@ export default function WapDetailPage({
 
   async function handleShare() {
     try {
-      const id = await generateShareLink({ id: b._id })
+      const id = await generateShareLink({
+        id: b._id,
+        sessionToken: sessionToken ?? undefined
+      })
       setShareId(id)
       await navigator.clipboard.writeText(
         `${window.location.origin}/share/${id}`
@@ -62,7 +67,7 @@ export default function WapDetailPage({
 
   async function handleDelete() {
     if (!confirm('Move to trash?')) return
-    await remove({ id: b._id })
+    await remove({ id: b._id, sessionToken: sessionToken ?? undefined })
     router.push('/bookmarks')
   }
 
@@ -70,7 +75,7 @@ export default function WapDetailPage({
     e.preventDefault()
     const tag = newTag.trim().toLowerCase()
     if (!tag) return
-    await addTag({ id: b._id, tag })
+    await addTag({ id: b._id, tag, sessionToken: sessionToken ?? undefined })
     setNewTag('')
   }
 
@@ -162,7 +167,13 @@ export default function WapDetailPage({
             <span key={t} className='waps-chip flex items-center gap-1'>
               {t}
               <button
-                onClick={() => removeTag({ id: b._id, tag: t })}
+                onClick={() =>
+                  removeTag({
+                    id: b._id,
+                    tag: t,
+                    sessionToken: sessionToken ?? undefined
+                  })
+                }
                 className='text-text-secondary hover:text-destructive'
               >
                 ×

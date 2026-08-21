@@ -19,7 +19,9 @@ export default function EditWapPage({
   const { sessionToken, loading: sessionLoading } = useSession()
   const bookmark = useQuery(
     api.bookmarks.getById,
-    sessionToken ? { id: id as Id<'bookmarks'>, sessionToken } : 'skip'
+    sessionToken
+      ? { id: id as Id<'bookmarks'>, sessionToken: sessionToken ?? undefined }
+      : 'skip'
   )
   const update = useMutation(api.bookmarks.update)
 
@@ -30,7 +32,7 @@ export default function EditWapPage({
 
   const categories = useQuery(
     api.categories.list,
-    sessionToken ? { sessionToken } : 'skip'
+    sessionToken ? { sessionToken: sessionToken ?? undefined } : 'skip'
   )
 
   useEffect(() => {
@@ -54,6 +56,7 @@ export default function EditWapPage({
     setBusy(true)
     try {
       await update({
+        sessionToken: sessionToken ?? undefined,
         id: id as Id<'bookmarks'>,
         title: title.trim() || undefined,
         description: description.trim() || undefined,

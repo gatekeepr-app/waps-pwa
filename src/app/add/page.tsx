@@ -23,11 +23,12 @@ export default function AddPage() {
 
   const categories = useQuery(
     api.categories.list,
-    sessionToken ? { sessionToken } : 'skip'
+    sessionToken ? { sessionToken: sessionToken ?? undefined } : 'skip'
   )
 
   useEffect(() => {
-    if (sessionToken) ensureCategories({ sessionToken })
+    if (sessionToken)
+      ensureCategories({ sessionToken: sessionToken ?? undefined })
   }, [sessionToken])
 
   useEffect(() => {
@@ -63,6 +64,7 @@ export default function AddPage() {
     setBusy(true)
     try {
       await addBookmark({
+        sessionToken: sessionToken ?? undefined,
         url: finalUrl,
         title: title.trim() || undefined,
         categoryId: (categoryId as any) || undefined
