@@ -1,37 +1,23 @@
 'use client'
 
 import { GridIcon, ListIcon, SearchIcon } from '@/components/GeometricIcons'
+import { useSession } from '@/lib/use-session'
 import { useMutation, useQuery } from 'convex/react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { api } from '../../../../convex/_generated/api'
-import type { Id } from '../../../../convex/_generated/dataModel'
 
 export default function BookmarksPage() {
-  const router = useRouter()
-  const [userId, setUserId] = useState<Id<'users'> | null>(null)
+  const { sessionToken, loading: sessionLoading } = useSession()
 
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('waps:user')
-      if (stored) {
-        const user = JSON.parse(stored)
-        if (user?.id) {
-          setUserId(user.id as Id<'users'>)
-        } else {
-          router.replace('/login')
-        }
-      } else {
-        router.replace('/login')
-      }
-    } catch {
-      router.replace('/login')
-    }
-  }, [router])
-
-  const bookmarks = useQuery(api.bookmarks.list, userId ? { userId } : 'skip')
-  const categories = useQuery(api.categories.list, userId ? { userId } : 'skip')
+  const bookmarks = useQuery(
+    api.bookmarks.list,
+    sessionToken ? { sessionToken } : 'skip'
+  )
+  const categories = useQuery(
+    api.categories.list,
+    sessionToken ? { sessionToken } : 'skip'
+  )
   const togglePin = useMutation(api.bookmarks.togglePin)
   const toggleRead = useMutation(api.bookmarks.toggleRead)
   const remove = useMutation(api.bookmarks.remove)
@@ -68,7 +54,7 @@ export default function BookmarksPage() {
     return result.sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0))
   }, [bookmarks, search, filterCategory])
 
-  if (!bookmarks || !categories) {
+  if (sessionLoading || !bookmarks || !categories) {
     return (
       <div className='flex min-h-screen items-center justify-center bg-background'>
         <div className='text-sm text-text-secondary'>Loading...</div>

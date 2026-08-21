@@ -1,3 +1,4 @@
+import { getAuthUserId } from '@convex-dev/auth/server'
 import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
 
@@ -34,10 +35,21 @@ export const ensureDefaults = mutation({
   }
 })
 
-/** List categories for a user */
+/** List categories for the authenticated user */
 export const list = query({
-  args: { userId: v.id('users') },
-  handler: async (ctx, { userId }) => {
+  args: { sessionToken: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    let userId = await getAuthUserId(ctx)
+    if (!userId && args.sessionToken) {
+      const sess = await ctx.db
+        .query('sessions')
+        .withIndex('by_token', q => q.eq('token', args.sessionToken!))
+        .first()
+      if (sess && sess.expiresAt > Date.now()) {
+        userId = sess.userId
+      }
+    }
+    if (!userId) return []
     return await ctx.db
       .query('categories')
       .withIndex('by_user', q => q.eq('userId', userId))

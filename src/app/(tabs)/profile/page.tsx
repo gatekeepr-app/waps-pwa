@@ -2,47 +2,31 @@
 
 import { LogOutIcon } from '@/components/GeometricIcons'
 import { signOut } from '@/lib/auth-api'
+import { useSession } from '@/lib/use-session'
 import { useMutation, useQuery } from 'convex/react'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 
 export default function ProfilePage() {
   const router = useRouter()
-  const [userId, setUserId] = useState<Id<'users'> | null>(null)
-  const [user, setUser] = useState<{
-    id: string
-    email: string
-    name?: string
-  } | null>(null)
+  const { user, sessionToken, loading: sessionLoading } = useSession()
+  const userId = (user?.id ?? null) as Id<'users'> | null
   const [pairingCode, setPairingCode] = useState<string | null>(null)
   const [pairingBusy, setPairingBusy] = useState(false)
   const [pairingError, setPairingError] = useState<string | null>(null)
 
   const generateCode = useMutation(api.pairing.generatePairingCode)
 
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('waps:user')
-      if (stored) {
-        const parsed = JSON.parse(stored)
-        if (parsed?.id) {
-          setUserId(parsed.id as Id<'users'>)
-          setUser(parsed)
-        } else {
-          router.replace('/login')
-        }
-      } else {
-        router.replace('/login')
-      }
-    } catch {
-      router.replace('/login')
-    }
-  }, [router])
-
-  const bookmarks = useQuery(api.bookmarks.list, userId ? { userId } : 'skip')
-  const categories = useQuery(api.categories.list, userId ? { userId } : 'skip')
+  const bookmarks = useQuery(
+    api.bookmarks.list,
+    sessionToken ? { sessionToken } : 'skip'
+  )
+  const categories = useQuery(
+    api.categories.list,
+    sessionToken ? { sessionToken } : 'skip'
+  )
 
   async function handleSignOut() {
     try {

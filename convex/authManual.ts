@@ -65,6 +65,16 @@ function timingSafeEqual(a: string, b: string): boolean {
   return result === 0
 }
 
+async function sha256Hex(input: string): Promise<string> {
+  const digest = await globalThis.crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(input)
+  )
+  return Array.from(new Uint8Array(digest))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
 /** Look up user by email */
 export const getUserByEmail = query({
   args: { email: v.string() },
@@ -76,8 +86,13 @@ export const getUserByEmail = query({
   }
 })
 
-/** Verify email + password against authAccounts (Password provider) */
-export const verifyCredentials = query({
+/** Verify email + password against authAccounts (Password provider).
+ *  Supports legacy credential formats and transparently upgrades them to PBKDF2:
+ *  - authAccounts row with salt          -> PBKDF2 (current)
+ *  - authAccounts row without salt       -> legacy unsalted SHA-256
+ *  - no authAccounts row                 -> legacy bcrypt passwordHash on user doc
+ */
+export const verifyCredentials = mutation({
   args: { email: v.string(), password: v.string() },
   handler: async (ctx, { email, password }) => {
     const user = await ctx.db
@@ -92,15 +107,43 @@ export const verifyCredentials = query({
         q.eq('userId', user._id).eq('provider', 'password')
       )
       .first()
-    if (!account || !(account as any).secret || !(account as any).salt)
-      throw new Error('Invalid email or password')
 
-    const valid = await verifyPassword(
-      password,
-      (account as any).secret,
-      (account as any).salt
-    )
+    let valid = false
+
+    if (account) {
+      const secret = (account as any).secret as string | undefined
+      const salt = (account as any).salt as string | undefined
+      if (!secret) throw new Error('Invalid email or password')
+      if (salt) {
+        valid = await verifyPassword(password, secret, salt)
+      } else {
+        const legacyHash = await sha256Hex(password)
+        valid = timingSafeEqual(legacyHash, secret)
+      }
+    } else {
+      const bcryptHash = (user as any).passwordHash as string | undefined
+      if (!bcryptHash) throw new Error('Invalid email or password')
+      const bcrypt = await import('bcryptjs')
+      valid = await bcrypt.compare(password, bcryptHash)
+    }
+
     if (!valid) throw new Error('Invalid email or password')
+
+    // Upgrade legacy credentials to PBKDF2
+    const { hash, salt } = await hashPassword(password)
+    if (account) {
+      if (!(account as any).salt) {
+        await ctx.db.patch(account._id, { secret: hash, salt } as any)
+      }
+    } else {
+      await ctx.db.insert('authAccounts', {
+        userId: user._id,
+        provider: 'password',
+        providerAccountId: email,
+        secret: hash,
+        salt
+      } as any)
+    }
 
     return { userId: user._id }
   }

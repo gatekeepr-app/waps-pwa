@@ -20,10 +20,13 @@ export async function POST(req: Request) {
   try {
     const { email, password } = bodySchema.parse(await req.json())
 
-    const { userId } = await client().query(api.authManual.verifyCredentials, {
-      email,
-      password
-    })
+    const { userId } = await client().mutation(
+      api.authManual.verifyCredentials,
+      {
+        email,
+        password
+      }
+    )
 
     const token = randomBytes(32).toString('base64url')
     const maxAgeDays = 30

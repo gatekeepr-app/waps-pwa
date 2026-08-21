@@ -27,10 +27,12 @@ const schema = defineSchema({
   })
     .index('by_user', ['userId'])
     .index('by_user_url', ['userId', 'url'])
+    .index('by_user_category', ['userId', 'categoryId'])
     .index('by_remindAt', ['remindAt'])
     .index('by_publicId', ['publicId'])
     .index('by_public', ['isPublic'])
-    .index('by_trashed', ['isTrashed']),
+    .index('by_trashed', ['isTrashed'])
+    .index('by_user_trashed', ['userId', 'isTrashed']),
   collections: defineTable({
     userId: v.id('users'),
     name: v.string(),

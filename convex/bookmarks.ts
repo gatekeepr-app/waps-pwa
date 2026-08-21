@@ -10,8 +10,7 @@ export const list = query({
     tag: v.optional(v.string()),
     read: v.optional(v.boolean()),
     search: v.optional(v.string()),
-    sessionToken: v.optional(v.string()),
-    userId: v.optional(v.id('users'))
+    sessionToken: v.optional(v.string())
   },
   handler: async (ctx, args) => {
     let userId = await getAuthUserId(ctx)
@@ -24,33 +23,38 @@ export const list = query({
         userId = sess.userId
       }
     }
-    if (!userId && args.userId) {
-      userId = args.userId
-    }
     if (!userId) return []
-    let q = ctx.db
-      .query('bookmarks')
-      .withIndex('by_user', (q: any) => q.eq('userId', userId))
+
+    let q
+    if (args.categoryId) {
+      q = ctx.db
+        .query('bookmarks')
+        .withIndex('by_user_category', (q: any) =>
+          q.eq('userId', userId).eq('categoryId', args.categoryId)
+        )
+    } else {
+      q = ctx.db
+        .query('bookmarks')
+        .withIndex('by_user', (q: any) => q.eq('userId', userId))
+    }
     if (args.collectionId)
       q = q.filter((doc: any) =>
         doc.eq(doc.field('collectionId'), args.collectionId)
       )
     const all = await q.order('desc').collect()
 
-    const enriched = await Promise.all(
-      all.map(async (b: any) => {
-        let categoryName: string | undefined
-        if (b.categoryId) {
-          const cat = await ctx.db.get(b.categoryId)
-          if (cat) categoryName = (cat as any).name
-        }
-        return { ...b, categoryName }
-      })
+    const categories = await ctx.db
+      .query('categories')
+      .withIndex('by_user', (q: any) => q.eq('userId', userId))
+      .collect()
+    const categoryNames = new Map(
+      categories.map((c: any) => [c._id, c.name as string])
     )
 
-    let filtered = enriched
-    if (args.categoryId)
-      filtered = filtered.filter((b: any) => b.categoryId === args.categoryId)
+    let filtered = all.map((b: any) => ({
+      ...b,
+      categoryName: b.categoryId ? categoryNames.get(b.categoryId) : undefined
+    }))
     if (args.tag)
       filtered = filtered.filter((b: any) => b.tags?.includes(args.tag))
     if (args.read !== undefined)

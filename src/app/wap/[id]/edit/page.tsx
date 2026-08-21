@@ -1,6 +1,7 @@
 'use client'
 
 import { BackIcon } from '@/components/GeometricIcons'
+import { useSession } from '@/lib/use-session'
 import { useMutation, useQuery } from 'convex/react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -20,23 +21,17 @@ export default function EditWapPage({
   })
   const update = useMutation(api.bookmarks.update)
 
-  const [userId, setUserId] = useState<Id<'users'> | null>(null)
+  const { sessionToken } = useSession()
+
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [categoryId, setCategoryId] = useState<string>('')
   const [busy, setBusy] = useState(false)
 
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('waps:user')
-      if (stored) {
-        const user = JSON.parse(stored)
-        if (user?.id) setUserId(user.id as Id<'users'>)
-      }
-    } catch {}
-  }, [])
-
-  const categories = useQuery(api.categories.list, userId ? { userId } : 'skip')
+  const categories = useQuery(
+    api.categories.list,
+    sessionToken ? { sessionToken } : 'skip'
+  )
 
   useEffect(() => {
     if (bookmark) {

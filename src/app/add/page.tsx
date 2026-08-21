@@ -1,6 +1,7 @@
 'use client'
 
 import { BackIcon } from '@/components/GeometricIcons'
+import { useSession } from '@/lib/use-session'
 import { useMutation, useQuery } from 'convex/react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -13,24 +14,19 @@ export default function AddPage() {
   const addBookmark = useMutation(api.bookmarks.add)
   const ensureCategories = useMutation(api.categories.ensureDefaults)
 
-  const [userId, setUserId] = useState<Id<'users'> | null>(null)
+  const { user, sessionToken } = useSession()
+  const userId = (user?.id ?? null) as Id<'users'> | null
+
   const [url, setUrl] = useState('')
   const [title, setTitle] = useState('')
   const [categoryId, setCategoryId] = useState<string>('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('waps:user')
-      if (stored) {
-        const user = JSON.parse(stored)
-        if (user?.id) setUserId(user.id as Id<'users'>)
-      }
-    } catch {}
-  }, [])
-
-  const categories = useQuery(api.categories.list, userId ? { userId } : 'skip')
+  const categories = useQuery(
+    api.categories.list,
+    sessionToken ? { sessionToken } : 'skip'
+  )
 
   useEffect(() => {
     if (userId) ensureCategories({ userId })
