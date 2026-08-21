@@ -27,8 +27,6 @@ export async function POST(req: Request) {
       name
     })
 
-    await client().mutation(api.categories.ensureDefaults, { userId })
-
     const token = randomBytes(32).toString('base64url')
     const maxAgeDays = 30
     const expiresAt = Date.now() + maxAgeDays * 24 * 60 * 60 * 1000
@@ -37,6 +35,10 @@ export async function POST(req: Request) {
       userId,
       token,
       expiresAt
+    })
+
+    await client().mutation(api.categories.ensureDefaults, {
+      sessionToken: token
     })
 
     const res = NextResponse.json({ ok: true, userId })

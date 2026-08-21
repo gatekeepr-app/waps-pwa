@@ -16,12 +16,12 @@ export default function EditWapPage({
 }) {
   const { id } = use(params)
   const router = useRouter()
-  const bookmark = useQuery(api.bookmarks.getById, {
-    id: id as Id<'bookmarks'>
-  })
+  const { sessionToken, loading: sessionLoading } = useSession()
+  const bookmark = useQuery(
+    api.bookmarks.getById,
+    sessionToken ? { id: id as Id<'bookmarks'>, sessionToken } : 'skip'
+  )
   const update = useMutation(api.bookmarks.update)
-
-  const { sessionToken } = useSession()
 
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -41,7 +41,7 @@ export default function EditWapPage({
     }
   }, [bookmark])
 
-  if (!bookmark) {
+  if (sessionLoading || !bookmark) {
     return (
       <div className='flex min-h-screen items-center justify-center bg-background'>
         <div className='text-sm text-text-secondary'>Loading...</div>

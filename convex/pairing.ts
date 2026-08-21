@@ -1,3 +1,4 @@
+import { getAuthUserId } from '@convex-dev/auth/server'
 import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
 
@@ -8,9 +9,19 @@ function randomKey(): string {
 }
 
 export const generatePairingCode = mutation({
-  args: { userId: v.id('users') },
+  args: { sessionToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const userId = args.userId
+    let userId = await getAuthUserId(ctx)
+    if (!userId && args.sessionToken) {
+      const sess = await ctx.db
+        .query('sessions')
+        .withIndex('by_token', q => q.eq('token', args.sessionToken!))
+        .first()
+      if (sess && sess.expiresAt > Date.now()) {
+        userId = sess.userId
+      }
+    }
+    if (!userId) throw new Error('Not authenticated')
 
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
     let code = ''

@@ -1,7 +1,21 @@
 import { getAuthUserId } from '@convex-dev/auth/server'
 import { v } from 'convex/values'
 import { internal } from './_generated/api'
-import { mutation, query } from './_generated/server'
+import { internalMutation, mutation, query } from './_generated/server'
+
+async function resolveUserId(ctx: any, sessionToken?: string) {
+  let userId = await getAuthUserId(ctx)
+  if (!userId && sessionToken) {
+    const sess = await ctx.db
+      .query('sessions')
+      .withIndex('by_token', (q: any) => q.eq('token', sessionToken))
+      .first()
+    if (sess && sess.expiresAt > Date.now()) {
+      userId = sess.userId
+    }
+  }
+  return userId
+}
 
 export const list = query({
   args: {
@@ -13,16 +27,7 @@ export const list = query({
     sessionToken: v.optional(v.string())
   },
   handler: async (ctx, args) => {
-    let userId = await getAuthUserId(ctx)
-    if (!userId && args.sessionToken) {
-      const sess = await ctx.db
-        .query('sessions')
-        .withIndex('by_token', q => q.eq('token', args.sessionToken!))
-        .first()
-      if (sess && sess.expiresAt > Date.now()) {
-        userId = sess.userId
-      }
-    }
+    const userId = await resolveUserId(ctx, args.sessionToken)
     if (!userId) return []
 
     let q
@@ -77,9 +82,13 @@ export const list = query({
 })
 
 export const getById = query({
-  args: { id: v.id('bookmarks') },
+  args: { id: v.id('bookmarks'), sessionToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.id)
+    const userId = await resolveUserId(ctx, args.sessionToken)
+    if (!userId) return null
+    const b = await ctx.db.get(args.id)
+    if (!b || b.userId !== userId) return null
+    return b
   }
 })
 
@@ -212,6 +221,10 @@ export const removeTag = mutation({
 export const setTags = mutation({
   args: { bookmarkId: v.id('bookmarks'), tags: v.array(v.string()) },
   handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx)
+    if (!userId) throw new Error('Not authenticated')
+    const b = await ctx.db.get(args.bookmarkId)
+    if (!b || b.userId !== userId) throw new Error('Not found')
     await ctx.db.patch(args.bookmarkId, { tags: args.tags })
   }
 })
@@ -224,6 +237,8 @@ export const updateCollection = mutation({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx)
     if (!userId) throw new Error('Not authenticated')
+    const b = await ctx.db.get(args.bookmarkId)
+    if (!b || b.userId !== userId) throw new Error('Not found')
     await ctx.db.patch(args.bookmarkId, { collectionId: args.collectionId })
   }
 })
@@ -295,7 +310,7 @@ export const importAll = mutation({
   }
 })
 
-export const updateMetadata = mutation({
+export const updateMetadata = internalMutation({
   args: {
     bookmarkId: v.id('bookmarks'),
     title: v.optional(v.string()),
@@ -387,37 +402,41 @@ export const permanentDelete = mutation({
 })
 
 export const emptyTrash = mutation({
-  args: {},
-  handler: async ctx => {
-    const userId = await getAuthUserId(ctx)
+  args: { sessionToken: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const userId = await resolveUserId(ctx, args.sessionToken)
     if (!userId) throw new Error('Not authenticated')
     const trashed = await ctx.db
       .query('bookmarks')
-      .withIndex('by_trashed', (q: any) => q.eq('isTrashed', true))
+      .withIndex('by_user_trashed', (q: any) =>
+        q.eq('userId', userId).eq('isTrashed', true)
+      )
       .collect()
     for (const b of trashed) {
-      if (b.userId === userId) await ctx.db.delete(b._id)
+      await ctx.db.delete(b._id)
     }
   }
 })
 
 export const listTrash = query({
-  args: {},
-  handler: async ctx => {
-    const userId = await getAuthUserId(ctx)
+  args: { sessionToken: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const userId = await resolveUserId(ctx, args.sessionToken)
     if (!userId) return []
     return await ctx.db
       .query('bookmarks')
-      .withIndex('by_trashed', (q: any) => q.eq('isTrashed', true))
+      .withIndex('by_user_trashed', (q: any) =>
+        q.eq('userId', userId).eq('isTrashed', true)
+      )
       .order('desc')
       .collect()
   }
 })
 
 export const listAllTags = query({
-  args: {},
-  handler: async ctx => {
-    const userId = await getAuthUserId(ctx)
+  args: { sessionToken: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const userId = await resolveUserId(ctx, args.sessionToken)
     if (!userId) return []
     const all = await ctx.db
       .query('bookmarks')
@@ -491,24 +510,37 @@ export const removeTagFromAll = mutation({
 })
 
 export const getRemindersDue = query({
-  args: { now: v.number() },
+  args: { now: v.number(), sessionToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx)
+    const userId = await resolveUserId(ctx, args.sessionToken)
     if (!userId) return []
-    return await ctx.db
+    const due = await ctx.db
       .query('bookmarks')
       .withIndex('by_remindAt', (q: any) => q.lte('remindAt', args.now))
       .filter((doc: any) => doc.neq(doc.field('remindAt'), undefined))
       .collect()
+    return due.filter((b: any) => b.userId === userId)
   }
 })
 
 export const listByUser = query({
-  args: { userId: v.id('users') },
+  args: {
+    sessionToken: v.optional(v.string()),
+    apiKey: v.optional(v.string())
+  },
   handler: async (ctx, args) => {
+    let userId = await resolveUserId(ctx, args.sessionToken)
+    if (!userId && args.apiKey) {
+      const keyDoc = await ctx.db
+        .query('apiKeys')
+        .withIndex('by_key', (q: any) => q.eq('key', args.apiKey))
+        .first()
+      if (keyDoc) userId = keyDoc.userId
+    }
+    if (!userId) return []
     return await ctx.db
       .query('bookmarks')
-      .withIndex('by_user', (q: any) => q.eq('userId', args.userId))
+      .withIndex('by_user', (q: any) => q.eq('userId', userId))
       .order('desc')
       .take(10)
   }

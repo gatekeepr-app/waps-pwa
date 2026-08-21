@@ -1,16 +1,21 @@
 'use client'
 
 import { BackIcon } from '@/components/GeometricIcons'
+import { useSession } from '@/lib/use-session'
 import { useQuery } from 'convex/react'
 import Link from 'next/link'
 import { useState } from 'react'
 import { api } from '../../../convex/_generated/api'
 
 export default function TagsPage() {
-  const tags = useQuery(api.bookmarks.listAllTags, {})
+  const { sessionToken, loading: sessionLoading } = useSession()
+  const tags = useQuery(
+    api.bookmarks.listAllTags,
+    sessionToken ? { sessionToken } : 'skip'
+  )
   const [search, setSearch] = useState('')
 
-  if (!tags) {
+  if (sessionLoading || !tags) {
     return (
       <div className='flex min-h-screen items-center justify-center bg-background'>
         <div className='text-sm text-text-secondary'>Loading...</div>

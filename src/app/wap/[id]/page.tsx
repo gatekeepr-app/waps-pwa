@@ -8,6 +8,7 @@ import {
   LinkIcon,
   ShareIcon
 } from '@/components/GeometricIcons'
+import { useSession } from '@/lib/use-session'
 import { useMutation, useQuery } from 'convex/react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -22,9 +23,11 @@ export default function WapDetailPage({
 }) {
   const { id } = use(params)
   const router = useRouter()
-  const bookmark = useQuery(api.bookmarks.getById, {
-    id: id as Id<'bookmarks'>
-  })
+  const { sessionToken, loading: sessionLoading } = useSession()
+  const bookmark = useQuery(
+    api.bookmarks.getById,
+    sessionToken ? { id: id as Id<'bookmarks'>, sessionToken } : 'skip'
+  )
   const togglePublic = useMutation(api.bookmarks.togglePublic)
   const remove = useMutation(api.bookmarks.remove)
   const generateShareLink = useMutation(api.bookmarks.generateShareLink)
@@ -35,7 +38,7 @@ export default function WapDetailPage({
   const [shareId, setShareId] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
-  if (!bookmark) {
+  if (sessionLoading || !bookmark) {
     return (
       <div className='flex min-h-screen items-center justify-center bg-background'>
         <div className='text-sm text-text-secondary'>Loading...</div>

@@ -7,12 +7,10 @@ import { useMutation, useQuery } from 'convex/react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { api } from '../../../../convex/_generated/api'
-import type { Id } from '../../../../convex/_generated/dataModel'
 
 export default function ProfilePage() {
   const router = useRouter()
   const { user, sessionToken, loading: sessionLoading } = useSession()
-  const userId = (user?.id ?? null) as Id<'users'> | null
   const [pairingCode, setPairingCode] = useState<string | null>(null)
   const [pairingBusy, setPairingBusy] = useState(false)
   const [pairingError, setPairingError] = useState<string | null>(null)
@@ -37,11 +35,11 @@ export default function ProfilePage() {
   }
 
   async function handleGeneratePairing() {
-    if (!userId) return
+    if (!sessionToken) return
     setPairingBusy(true)
     setPairingError(null)
     try {
-      const result = await generateCode({ userId })
+      const result = await generateCode({ sessionToken })
       setPairingCode(result.code)
     } catch (e: any) {
       setPairingError(e?.message || 'Failed to generate code')

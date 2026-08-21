@@ -52,7 +52,7 @@ export const fetchMetadata = action({
     const hasManualTitle =
       bookmark && (bookmark as any).title && (bookmark as any).title !== ''
 
-    await ctx.runMutation(api.bookmarks.updateMetadata, {
+    await ctx.runMutation(internal.bookmarks.updateMetadata, {
       bookmarkId: args.bookmarkId,
       title: hasManualTitle ? undefined : fetchedTitle,
       image,
@@ -123,7 +123,7 @@ export const suggestTags = action({
       })
       const hasManualDesc = bookmark && (bookmark as any).description
       if (!hasManualDesc) {
-        await ctx.runMutation(api.bookmarks.updateMetadata, {
+        await ctx.runMutation(internal.bookmarks.updateMetadata, {
           bookmarkId: args.bookmarkId,
           description: result.description.slice(0, 280)
         })
@@ -140,12 +140,12 @@ export const checkDeadLink = action({
         method: 'HEAD',
         headers: { 'User-Agent': 'Mozilla/5.0' }
       })
-      await ctx.runMutation(api.bookmarks.updateMetadata, {
+      await ctx.runMutation(internal.bookmarks.updateMetadata, {
         bookmarkId: args.bookmarkId,
         isBroken: res.status >= 400
       })
     } catch {
-      await ctx.runMutation(api.bookmarks.updateMetadata, {
+      await ctx.runMutation(internal.bookmarks.updateMetadata, {
         bookmarkId: args.bookmarkId,
         isBroken: true
       })
@@ -192,7 +192,7 @@ export const captureScreenshot = action({
       }
 
       if (screenshotUrl) {
-        await ctx.runMutation(api.bookmarks.updateMetadata, {
+        await ctx.runMutation(internal.bookmarks.updateMetadata, {
           bookmarkId: args.bookmarkId,
           screenshotUrl
         })

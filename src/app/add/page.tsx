@@ -7,15 +7,13 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { api } from '../../../convex/_generated/api'
-import type { Id } from '../../../convex/_generated/dataModel'
 
 export default function AddPage() {
   const router = useRouter()
   const addBookmark = useMutation(api.bookmarks.add)
   const ensureCategories = useMutation(api.categories.ensureDefaults)
 
-  const { user, sessionToken } = useSession()
-  const userId = (user?.id ?? null) as Id<'users'> | null
+  const { sessionToken } = useSession()
 
   const [url, setUrl] = useState('')
   const [title, setTitle] = useState('')
@@ -29,8 +27,8 @@ export default function AddPage() {
   )
 
   useEffect(() => {
-    if (userId) ensureCategories({ userId })
-  }, [userId])
+    if (sessionToken) ensureCategories({ sessionToken })
+  }, [sessionToken])
 
   useEffect(() => {
     navigator.clipboard

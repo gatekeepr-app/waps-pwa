@@ -1,6 +1,7 @@
 'use client'
 
 import { BackIcon, ExternalLinkIcon } from '@/components/GeometricIcons'
+import { useSession } from '@/lib/use-session'
 import { useQuery } from 'convex/react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -15,11 +16,13 @@ export default function ReaderPage({
 }) {
   const { id } = use(params)
   const router = useRouter()
-  const bookmark = useQuery(api.bookmarks.getById, {
-    id: id as Id<'bookmarks'>
-  })
+  const { sessionToken, loading: sessionLoading } = useSession()
+  const bookmark = useQuery(
+    api.bookmarks.getById,
+    sessionToken ? { id: id as Id<'bookmarks'>, sessionToken } : 'skip'
+  )
 
-  if (!bookmark) {
+  if (sessionLoading || !bookmark) {
     return (
       <div className='flex min-h-screen items-center justify-center bg-background'>
         <div className='text-sm text-text-secondary'>Loading...</div>

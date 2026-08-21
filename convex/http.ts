@@ -167,7 +167,7 @@ http.route({
       })
     }
     const bookmarks = await ctx.runQuery(api.bookmarks.listByUser, {
-      userId: keyDoc.userId
+      apiKey
     })
     return new Response(JSON.stringify(bookmarks), {
       status: 200,

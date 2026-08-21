@@ -2,6 +2,20 @@ import { getAuthUserId } from '@convex-dev/auth/server'
 import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
 
+async function resolveUserId(ctx: any, sessionToken?: string) {
+  let userId = await getAuthUserId(ctx)
+  if (!userId && sessionToken) {
+    const sess = await ctx.db
+      .query('sessions')
+      .withIndex('by_token', (q: any) => q.eq('token', sessionToken))
+      .first()
+    if (sess && sess.expiresAt > Date.now()) {
+      userId = sess.userId
+    }
+  }
+  return userId
+}
+
 const DEFAULT_CATEGORIES = [
   'Work',
   'Personal',
@@ -14,10 +28,13 @@ const DEFAULT_CATEGORIES = [
   'Other'
 ]
 
-/** Create default categories for a user */
+/** Create default categories for the authenticated user */
 export const ensureDefaults = mutation({
-  args: { userId: v.id('users') },
-  handler: async (ctx, { userId }) => {
+  args: { sessionToken: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const userId = await resolveUserId(ctx, args.sessionToken)
+    if (!userId) throw new Error('Not authenticated')
+
     const existing = await ctx.db
       .query('categories')
       .withIndex('by_user', q => q.eq('userId', userId))
@@ -60,18 +77,21 @@ export const list = query({
 
 /** Add a custom category */
 export const add = mutation({
-  args: { userId: v.id('users'), name: v.string() },
-  handler: async (ctx, { userId, name }) => {
+  args: { sessionToken: v.optional(v.string()), name: v.string() },
+  handler: async (ctx, args) => {
+    const userId = await resolveUserId(ctx, args.sessionToken)
+    if (!userId) throw new Error('Not authenticated')
+
     const existing = await ctx.db
       .query('categories')
       .withIndex('by_user', q => q.eq('userId', userId))
-      .filter(q => q.eq(q.field('name'), name))
+      .filter(q => q.eq(q.field('name'), args.name))
       .first()
     if (existing) throw new Error('Category already exists')
 
     return await ctx.db.insert('categories', {
       userId,
-      name,
+      name: args.name,
       isDefault: false,
       order: 999
     })
@@ -80,12 +100,15 @@ export const add = mutation({
 
 /** Delete a custom category */
 export const remove = mutation({
-  args: { id: v.id('categories') },
-  handler: async (ctx, { id }) => {
-    const doc = await ctx.db.get(id)
+  args: { sessionToken: v.optional(v.string()), id: v.id('categories') },
+  handler: async (ctx, args) => {
+    const userId = await resolveUserId(ctx, args.sessionToken)
+    if (!userId) throw new Error('Not authenticated')
+    const doc = await ctx.db.get(args.id)
     if (!doc) throw new Error('Category not found')
+    if (doc.userId !== userId) throw new Error('Not found')
     if (doc.isDefault) throw new Error('Cannot delete default category')
-    await ctx.db.delete(id)
+    await ctx.db.delete(args.id)
     return { ok: true }
   }
 })
