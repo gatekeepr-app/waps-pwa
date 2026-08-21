@@ -8,8 +8,10 @@ import {
   LinkIcon,
   ShareIcon
 } from '@/components/GeometricIcons'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useSession } from '@/lib/use-session'
 import { useMutation, useQuery } from 'convex/react'
+import { Globe } from 'lucide-react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useState } from 'react'
@@ -73,6 +75,13 @@ export default function WapDetailPage() {
     if (!tag) return
     await addTag({ id: b._id, tag, sessionToken: sessionToken ?? undefined })
     setNewTag('')
+  }
+
+  async function handleTogglePublic() {
+    await togglePublic({
+      id: b._id,
+      sessionToken: sessionToken ?? undefined
+    })
   }
 
   return (
@@ -151,6 +160,15 @@ export default function WapDetailPage() {
           {copied ? 'Copied!' : 'Share'}
         </button>
         <button
+          onClick={handleTogglePublic}
+          className={`waps-btn-outline flex items-center gap-2 ${
+            b.isPublic ? 'border-primary text-primary' : ''
+          }`}
+        >
+          <Globe size={14} />
+          {b.isPublic ? 'Public' : 'Make public'}
+        </button>
+        <button
           onClick={handleDelete}
           className='waps-btn-outline flex items-center gap-2 text-destructive'
         >
@@ -158,6 +176,15 @@ export default function WapDetailPage() {
           Trash
         </button>
       </div>
+
+      {b.isPublic && (
+        <Alert className='mb-4' variant='default'>
+          <Globe size={14} />
+          <AlertDescription>
+            This wap is visible to everyone on the Explore page.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {shareId && (
         <div className='waps-card mb-4 p-3'>

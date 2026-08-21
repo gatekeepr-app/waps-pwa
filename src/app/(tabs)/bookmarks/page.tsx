@@ -1,6 +1,13 @@
 'use client'
 
 import { GridIcon, ListIcon, SearchIcon } from '@/components/GeometricIcons'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select'
 import { useSession } from '@/lib/use-session'
 import { useMutation, useQuery } from 'convex/react'
 import Link from 'next/link'
@@ -94,21 +101,25 @@ export default function BookmarksPage() {
 
       {categories.length > 0 && (
         <div className='mb-4'>
-          <select
-            value={filterCategory ?? ''}
-            onChange={e => setFilterCategory(e.target.value || null)}
-            className='waps-input w-full'
+          <Select
+            value={filterCategory ?? 'all'}
+            onValueChange={v => setFilterCategory(v === 'all' ? null : v)}
           >
-            <option value=''>All Categories</option>
-            {categories.map(cat => (
-              <option key={cat._id} value={cat._id}>
-                {cat.name}
-                {categoryCounts.has(cat._id)
-                  ? ` (${categoryCounts.get(cat._id)})`
-                  : ''}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger aria-label='Filter by category'>
+              <SelectValue placeholder='All Categories' />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value='all'>All Categories</SelectItem>
+              {categories.map(cat => (
+                <SelectItem key={cat._id} value={cat._id}>
+                  {cat.name}
+                  {categoryCounts.has(cat._id)
+                    ? ` (${categoryCounts.get(cat._id)})`
+                    : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       )}
 

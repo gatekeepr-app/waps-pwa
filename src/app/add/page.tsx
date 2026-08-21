@@ -1,6 +1,14 @@
 'use client'
 
 import { BackIcon } from '@/components/GeometricIcons'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select'
 import { useSession } from '@/lib/use-session'
 import { useMutation, useQuery } from 'convex/react'
 import Link from 'next/link'
@@ -119,25 +127,29 @@ export default function AddPage() {
           {categories && categories.length > 0 && (
             <div>
               <label className='waps-label mb-1 block'>Category</label>
-              <select
-                value={categoryId}
-                onChange={e => setCategoryId(e.target.value)}
-                className='waps-input w-full'
+              <Select
+                value={categoryId || 'none'}
+                onValueChange={v => setCategoryId(v === 'none' ? '' : v)}
               >
-                <option value=''>No category</option>
-                {categories.map(c => (
-                  <option key={c._id} value={c._id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger aria-label='Category'>
+                  <SelectValue placeholder='Pick a category' />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value='none'>No category</SelectItem>
+                  {categories.map(c => (
+                    <SelectItem key={c._id} value={c._id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           )}
 
           {error && (
-            <div className='text-sm text-destructive' role='alert'>
-              {error}
-            </div>
+            <Alert variant='destructive' role='alert'>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           )}
 
           <button

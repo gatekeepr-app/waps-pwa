@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
+import { Toaster } from 'sonner'
 import { ConvexClientProvider } from './ConvexClientProvider'
 import './globals.css'
 import PwaRegister from './pwa-register'
@@ -82,6 +83,7 @@ export default function RootLayout({
           <div className='mx-auto flex min-h-screen flex-col bg-background'>
             <main className='flex grow flex-col'>{children}</main>
           </div>
+          <Toaster position='bottom-center' theme='dark' />
         </ConvexClientProvider>
       </body>
     </html>
