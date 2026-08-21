@@ -37,6 +37,7 @@ export default function AddPage() {
   const [url, setUrl] = useState('')
   const [title, setTitle] = useState('')
   const [categoryId, setCategoryId] = useState<string>('')
+  const [categoryTouched, setCategoryTouched] = useState(false)
   const [makePublic, setMakePublic] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -64,6 +65,7 @@ export default function AddPage() {
 
   const normalized = normalizeUrlInput(url)
   const debouncedUrl = useDebounced(normalized ?? '', 500)
+  const debouncedTitle = useDebounced(title.trim(), 500)
 
   const duplicate = useQuery(
     api.bookmarks.checkDuplicate,
@@ -81,6 +83,22 @@ export default function AddPage() {
       ? { url: debouncedUrl, sessionToken: sessionToken ?? undefined }
       : 'skip'
   )
+
+  // #4 auto-categorization from the user's own library patterns
+  const suggestion = useQuery(
+    api.bookmarks.suggestCategory,
+    sessionToken && debouncedUrl && !categoryTouched
+      ? {
+          sessionToken: sessionToken ?? undefined,
+          url: debouncedUrl,
+          title: debouncedTitle || undefined
+        }
+      : 'skip'
+  )
+
+  useEffect(() => {
+    if (suggestion?.categoryId) setCategoryId(suggestion.categoryId as any)
+  }, [suggestion])
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -198,10 +216,19 @@ export default function AddPage() {
               <label className='waps-label mb-1 block'>Category</label>
               <Select
                 value={categoryId || 'none'}
-                onValueChange={v => setCategoryId(v === 'none' ? '' : v)}
+                onValueChange={v => {
+                  setCategoryTouched(true)
+                  setCategoryId(v === 'none' ? '' : v)
+                }}
               >
                 <SelectTrigger aria-label='Category'>
-                  <SelectValue placeholder='Pick a category' />
+                  <SelectValue
+                    placeholder={
+                      suggestion
+                        ? `Auto: ${suggestion.name}`
+                        : 'Pick a category'
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value='none'>No category</SelectItem>

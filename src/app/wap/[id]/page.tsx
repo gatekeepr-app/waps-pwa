@@ -11,7 +11,7 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useSession } from '@/lib/use-session'
 import { useMutation, useQuery } from 'convex/react'
-import { Globe } from 'lucide-react'
+import { Globe, Heart } from 'lucide-react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useState } from 'react'
@@ -239,12 +239,111 @@ export default function WapDetailPage() {
       </div>
 
       {b.textContent && (
-        <div className='waps-card p-4'>
+        <div className='waps-card mb-4 p-4'>
           <div className='waps-label mb-2'>Extracted text</div>
           <div className='max-h-48 overflow-y-auto text-xs leading-relaxed text-text-secondary'>
             {b.textContent.slice(0, 2000)}
           </div>
         </div>
+      )}
+
+      <Recommendations b={b} sessionToken={sessionToken} />
+    </div>
+  )
+}
+
+function Recommendations({
+  b,
+  sessionToken
+}: {
+  b: any
+  sessionToken: string | null
+}) {
+  const similar = useQuery(
+    api.bookmarks.similarTo,
+    sessionToken ? { id: b._id, sessionToken } : 'skip'
+  )
+  const related = useQuery(
+    api.bookmarks.relatedWaps,
+    b.url ? { url: b.url, sessionToken: sessionToken ?? undefined } : 'skip'
+  )
+
+  if (
+    (similar === undefined || similar.length === 0) &&
+    (related === undefined || related.length === 0)
+  ) {
+    return null
+  }
+
+  return (
+    <div className='waps-card p-4'>
+      <div className='waps-label mb-3'>You might also like</div>
+
+      {similar !== undefined && similar.length > 0 && (
+        <>
+          <div className='mb-2 text-tag font-bold uppercase tracking-wider text-text-secondary'>
+            In your library
+          </div>
+          <ul className='mb-4 space-y-1.5'>
+            {similar.map((s: any) => (
+              <li key={s._id}>
+                <Link
+                  href={`/wap/${s._id}`}
+                  className='flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-surface'
+                >
+                  {s.favicon && (
+                    <img
+                      src={s.favicon}
+                      alt=''
+                      className='h-4 w-4 flex-shrink-0'
+                      onError={e => {
+                        ;(e.target as HTMLImageElement).style.visibility =
+                          'hidden'
+                      }}
+                    />
+                  )}
+                  <span className='min-w-0 flex-1 truncate text-sm text-text-primary'>
+                    {s.title || s.url}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {related !== undefined && related.length > 0 && (
+        <>
+          <div className='mb-2 text-tag font-bold uppercase tracking-wider text-text-secondary'>
+            Loved by the community
+          </div>
+          <ul className='space-y-1.5'>
+            {related.map((r: any) => (
+              <li key={`rel-${r._id}`}>
+                <Link
+                  href={r.publicId ? `/share/${r.publicId}` : r.url}
+                  className='flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-surface'
+                >
+                  {r.favicon && (
+                    <img
+                      src={r.favicon}
+                      alt=''
+                      className='h-4 w-4 flex-shrink-0'
+                      onError={e => {
+                        ;(e.target as HTMLImageElement).style.visibility =
+                          'hidden'
+                      }}
+                    />
+                  )}
+                  <span className='min-w-0 flex-1 truncate text-sm text-text-primary'>
+                    {r.title || r.url}
+                  </span>
+                  <Heart size={11} className='flex-shrink-0 text-primary' />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
     </div>
   )

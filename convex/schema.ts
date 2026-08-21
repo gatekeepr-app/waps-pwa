@@ -78,7 +78,12 @@ const schema = defineSchema({
     name: v.string(),
     isDefault: v.optional(v.boolean()),
     order: v.optional(v.number())
-  }).index('by_user', ['userId'])
+  }).index('by_user', ['userId']),
+  urlStats: defineTable({
+    url: v.string(),
+    savers: v.number(),
+    lastSavedAt: v.number()
+  }).index('by_url', ['url'])
 })
 
 export default schema

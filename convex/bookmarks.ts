@@ -154,6 +154,93 @@ async function findExisting(
   return null
 }
 
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '').toLowerCase()
+  } catch {
+    return ''
+  }
+}
+
+/** Maintain the global per-URL saver counter used by trending/explore. */
+async function bumpUrlStat(ctx: any, url: string, delta: number) {
+  const doc = await ctx.db
+    .query('urlStats')
+    .withIndex('by_url', (q: any) => q.eq('url', url))
+    .first()
+  if (!doc) {
+    if (delta > 0)
+      await ctx.db.insert('urlStats', {
+        url,
+        savers: delta,
+        lastSavedAt: Date.now()
+      })
+    return
+  }
+  const savers = (doc.savers ?? 0) + delta
+  if (savers <= 0) {
+    await ctx.db.delete(doc._id)
+    return
+  }
+  await ctx.db.patch(doc._id, {
+    savers,
+    lastSavedAt: delta > 0 ? Date.now() : doc.lastSavedAt
+  })
+}
+
+const STOP_WORDS = new Set([
+  'the',
+  'and',
+  'for',
+  'with',
+  'you',
+  'your',
+  'how',
+  'why',
+  'what',
+  'when',
+  'where',
+  'this',
+  'that',
+  'from',
+  'into',
+  'about',
+  'https',
+  'http',
+  'www',
+  'com',
+  'org',
+  'net',
+  'app',
+  'get',
+  'all',
+  'are',
+  'was',
+  'has',
+  'have',
+  'can',
+  'not',
+  'but',
+  'our',
+  'one',
+  'two',
+  'use',
+  'using',
+  'new',
+  'best',
+  'top',
+  'guide',
+  'tutorial',
+  'free',
+  'online',
+  'official',
+  'home',
+  'page',
+  'site',
+  'docs',
+  'blog'
+])
+
 export const add = mutation({
   args: {
     sessionToken: v.optional(v.string()),
@@ -171,6 +258,7 @@ export const add = mutation({
     if (!url) throw new Error('Invalid URL')
     const existing = await findExisting(ctx, userId, url)
     if (existing) throw new Error('Bookmark already exists')
+    await bumpUrlStat(ctx, url, 1)
     const bookmarkId = await ctx.db.insert('bookmarks', {
       userId,
       url,
@@ -197,6 +285,7 @@ export const shareQuickAdd = mutation({
     if (!url) throw new Error('Invalid URL')
     const existing = await findExisting(ctx, userId, url)
     if (existing) return existing._id
+    await bumpUrlStat(ctx, url, 1)
     const bookmarkId = await ctx.db.insert('bookmarks', {
       userId,
       url
@@ -375,7 +464,10 @@ export const batchDelete = mutation({
     if (!userId) throw new Error('Not authenticated')
     for (const id of args.ids) {
       const b = await ctx.db.get(id)
-      if (b && b.userId === userId) await ctx.db.delete(id)
+      if (b && b.userId === userId) {
+        await bumpUrlStat(ctx, b.url, -1)
+        await ctx.db.delete(id)
+      }
     }
   }
 })
@@ -528,6 +620,7 @@ export const permanentDelete = mutation({
     if (!userId) throw new Error('Not authenticated')
     const b = await ctx.db.get(args.id)
     if (!b || b.userId !== userId) throw new Error('Not found')
+    await bumpUrlStat(ctx, b.url, -1)
     await ctx.db.delete(args.id)
   }
 })
@@ -544,6 +637,7 @@ export const emptyTrash = mutation({
       )
       .collect()
     for (const b of trashed) {
+      await bumpUrlStat(ctx, b.url, -1)
       await ctx.db.delete(b._id)
     }
   }
@@ -619,6 +713,7 @@ export const purgeOldTrash = mutation({
       .collect()
     for (const b of trashed) {
       if (b.trashedAt && b.trashedAt < thirtyDaysAgo) {
+        await bumpUrlStat(ctx, b.url, -1)
         await ctx.db.delete(b._id)
       }
     }
@@ -704,6 +799,7 @@ export const addByHttp = mutation({
     if (!url) throw new Error('Invalid URL')
     const existing = await findExisting(ctx, args.userId, url)
     if (existing) throw new Error('Bookmark already exists')
+    await bumpUrlStat(ctx, url, 1)
     const id = await ctx.db.insert('bookmarks', {
       userId: args.userId,
       url,
@@ -725,6 +821,194 @@ export const getByPublicId = query({
       .withIndex('by_publicId', (q: any) => q.eq('publicId', args.publicId))
       .first()
     return b ? publicView(b) : null
+  }
+})
+
+/** #1+#7: Explore feed with engagement-weighted ranking.
+ *  score = log-scaled saver count, share-link boost, HN-style time decay. */
+export const exploreFeed = query({
+  args: { sort: v.optional(v.union(v.literal('trending'), v.literal('new'))) },
+  handler: async (ctx, args) => {
+    const sort = args.sort ?? 'trending'
+    const pubs = await ctx.db
+      .query('bookmarks')
+      .withIndex('by_public', (q: any) => q.eq('isPublic', true))
+      .collect()
+    const now = Date.now()
+    const out = []
+    for (const b of pubs) {
+      const stat = await ctx.db
+        .query('urlStats')
+        .withIndex('by_url', (q: any) => q.eq('url', b.url))
+        .first()
+      const savers = stat?.savers ?? 1
+      let score = 0
+      if (sort === 'trending') {
+        const ageHours = Math.max(
+          1,
+          (now - (stat?.lastSavedAt ?? b._creationTime)) / 3_600_000
+        )
+        const shareBoost = b.publicId ? 1.25 : 1
+        score =
+          ((Math.log10(savers * 9 + 1) * 4 + (b.publicId ? 1 : 0)) /
+            Math.pow(ageHours + 2, 1.2)) *
+          shareBoost
+      }
+      out.push({ ...publicView(b), savers, score })
+    }
+    if (sort === 'trending') out.sort((a: any, b: any) => b.score - a.score)
+    else out.sort((a: any, b: any) => b._creationTime - a._creationTime)
+    return out.slice(0, 60)
+  }
+})
+
+/** #2: Collaborative filtering - users who saved this URL also saved...
+ *  Only surfaces PUBLIC waps the viewer hasn't saved themselves. */
+export const relatedWaps = query({
+  args: { url: v.string(), sessionToken: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const savers = new Set<string>()
+    for (const candidate of urlVariants(args.url)) {
+      const hits = await ctx.db
+        .query('bookmarks')
+        .withIndex('by_url', (q: any) => q.eq('url', candidate))
+        .collect()
+      for (const h of hits) savers.add(h.userId)
+    }
+    savers.delete(
+      args.sessionToken
+        ? ((await resolveUserId(ctx, args.sessionToken)) ?? '')
+        : ''
+    )
+
+    const tally = new Map<string, number>()
+    let scanned = 0
+    for (const uid of Array.from(savers)) {
+      if (++scanned > 15) break
+      const theirs = await ctx.db
+        .query('bookmarks')
+        .withIndex('by_user', (q: any) => q.eq('userId', uid))
+        .take(300)
+      for (const t of theirs) {
+        if (t.url === args.url || t.isTrashed) continue
+        tally.set(t.url, (tally.get(t.url) ?? 0) + 1)
+      }
+    }
+
+    const mineSet = new Set<string>()
+    const me = await resolveUserId(ctx, args.sessionToken)
+    if (me) {
+      const mine = await ctx.db
+        .query('bookmarks')
+        .withIndex('by_user', (q: any) => q.eq('userId', me))
+        .collect()
+      for (const m of mine) mineSet.add(m.url)
+    }
+
+    const results = []
+    const sorted = Array.from(tally.entries()).sort((a, b) => b[1] - a[1])
+    for (const [u, count] of sorted) {
+      if (results.length >= 6) break
+      if (mineSet.has(u)) continue
+      const pub = await ctx.db
+        .query('bookmarks')
+        .withIndex('by_url', (q: any) => q.eq('url', u))
+        .filter((q: any) => q.eq(q.field('isPublic'), true))
+        .first()
+      if (pub) results.push({ ...publicView(pub), coSaves: count })
+    }
+    return results
+  }
+})
+
+/** #3: Similar waps from the owner's own library.
+ *  same domain +3, shared tags +1 each, same category +2. */
+export const similarTo = query({
+  args: { id: v.id('bookmarks'), sessionToken: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const userId = await resolveUserId(ctx, args.sessionToken)
+    if (!userId) return []
+    const base = await ctx.db.get(args.id)
+    if (!base || base.userId !== userId) return []
+    const all = await ctx.db
+      .query('bookmarks')
+      .withIndex('by_user', (q: any) => q.eq('userId', userId))
+      .collect()
+    const baseHost = hostOf(base.url)
+    const baseTags = new Set(base.tags ?? [])
+    return all
+      .filter((x: any) => x._id !== base._id && !x.isTrashed && !x.isBroken)
+      .map((x: any) => {
+        let score = 0
+        if (x.categoryId && x.categoryId === base.categoryId) score += 2
+        if (baseHost && hostOf(x.url) === baseHost) score += 3
+        for (const t of x.tags ?? []) if (baseTags.has(t)) score += 1
+        return { ...publicView(x), matchScore: score }
+      })
+      .filter((x: any) => x.matchScore > 0)
+      .sort((a: any, b: any) => b.matchScore - a.matchScore)
+      .slice(0, 6)
+  }
+})
+
+/** #4: Auto-categorization. Builds keyword/domain profiles per category
+ *  from the user's existing library and scores the incoming URL/title. */
+export const suggestCategory = query({
+  args: {
+    sessionToken: v.optional(v.string()),
+    url: v.string(),
+    title: v.optional(v.string())
+  },
+  handler: async (ctx, args) => {
+    const userId = await resolveUserId(ctx, args.sessionToken)
+    if (!userId) return null
+    const cats = await ctx.db
+      .query('categories')
+      .withIndex('by_user', (q: any) => q.eq('userId', userId))
+      .collect()
+    if (!cats.length) return null
+    const books = await ctx.db
+      .query('bookmarks')
+      .withIndex('by_user', (q: any) => q.eq('userId', userId))
+      .collect()
+
+    const profile = new Map<
+      string,
+      { domains: Map<string, number>; tokens: Map<string, number> }
+    >()
+    for (const c of cats)
+      profile.set(c._id, { domains: new Map(), tokens: new Map() })
+    for (const b of books) {
+      if (!b.categoryId || !profile.has(b.categoryId)) continue
+      const p = profile.get(b.categoryId)!
+      const h = hostOf(b.url)
+      if (h) p.domains.set(h, (p.domains.get(h) ?? 0) + 1)
+      const words = `${b.title ?? ''}`.toLowerCase().match(/[a-z]{3,}/g) ?? []
+      for (const w of words) {
+        if (!STOP_WORDS.has(w)) p.tokens.set(w, (p.tokens.get(w) ?? 0) + 1)
+      }
+    }
+
+    const host = hostOf(normalizeUrlInput(args.url) ?? args.url)
+    const words = `${args.title ?? ''}`.toLowerCase().match(/[a-z]{3,}/g) ?? []
+
+    let best: { categoryId: string; score: number } | null = null
+    for (const [cid, p] of Array.from(profile.entries())) {
+      let score = 0
+      if (host && p.domains.has(host)) score += 5 * (p.domains.get(host) ?? 0)
+      // sibling subdomains on the same app host (e.g. *.vercel.app)
+      const baseDomain = host.split('.').slice(-2).join('.')
+      for (const [d, n] of Array.from(p.domains.entries())) {
+        if (d !== host && d.endsWith(baseDomain) && host.endsWith(baseDomain))
+          score += 2 * n
+      }
+      for (const w of words) score += p.tokens.get(w) ?? 0
+      if (!best || score > best.score) best = { categoryId: cid, score }
+    }
+
+    if (!best || best.score < 3) return null
+    const cat = cats.find(c => c._id === best!.categoryId)
+    return cat ? { categoryId: cat._id, name: cat.name } : null
   }
 })
 
