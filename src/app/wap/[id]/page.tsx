@@ -82,6 +82,14 @@ export default function WapDetailPage() {
       id: b._id,
       sessionToken: sessionToken ?? undefined
     })
+    // Mint a publicId when going public so Explore can deep-link to the
+    // share page instead of the raw URL.
+    if (!b.isPublic && !b.publicId) {
+      await generateShareLink({
+        id: b._id,
+        sessionToken: sessionToken ?? undefined
+      })
+    }
   }
 
   return (

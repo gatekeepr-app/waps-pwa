@@ -28,7 +28,7 @@ export default function ExplorePage() {
           {items.map((b: any) => (
             <Link
               key={b._id}
-              href={`/wap/${b._id}`}
+              href={b.publicId ? `/share/${b.publicId}` : b.url}
               className='waps-card overflow-hidden'
             >
               {b.image && (
