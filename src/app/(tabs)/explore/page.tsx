@@ -37,6 +37,9 @@ export default function ExplorePage() {
                   alt=''
                   className='h-28 w-full object-cover'
                   loading='lazy'
+                  onError={e => {
+                    ;(e.target as HTMLImageElement).style.visibility = 'hidden'
+                  }}
                 />
               )}
               <div className='p-3'>
@@ -47,6 +50,10 @@ export default function ExplorePage() {
                       alt=''
                       className='h-4 w-4'
                       loading='lazy'
+                      onError={e => {
+                        ;(e.target as HTMLImageElement).style.visibility =
+                          'hidden'
+                      }}
                     />
                   )}
                   <div className='truncate text-xs font-bold text-text-primary'>

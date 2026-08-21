@@ -4,17 +4,12 @@ import { BackIcon, ExternalLinkIcon } from '@/components/GeometricIcons'
 import { useSession } from '@/lib/use-session'
 import { useQuery } from 'convex/react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { use } from 'react'
+import { useParams, useRouter } from 'next/navigation'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 
-export default function ReaderPage({
-  params
-}: {
-  params: Promise<{ id: string }>
-}) {
-  const { id } = use(params)
+export default function ReaderPage() {
+  const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const { sessionToken, loading: sessionLoading } = useSession()
   const bookmark = useQuery(
@@ -43,7 +38,16 @@ export default function ReaderPage({
       </Link>
 
       <div className='mb-4 flex items-center gap-2'>
-        {b.favicon && <img src={b.favicon} alt='' className='h-5 w-5' />}
+        {b.favicon && (
+          <img
+            src={b.favicon}
+            alt=''
+            className='h-5 w-5'
+            onError={e => {
+              ;(e.target as HTMLImageElement).style.visibility = 'hidden'
+            }}
+          />
+        )}
         <h1 className='text-heading font-bold text-text-primary'>
           {b.title || new URL(b.url).hostname}
         </h1>

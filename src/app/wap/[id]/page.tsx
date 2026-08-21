@@ -11,17 +11,13 @@ import {
 import { useSession } from '@/lib/use-session'
 import { useMutation, useQuery } from 'convex/react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { use, useState } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import { useState } from 'react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 
-export default function WapDetailPage({
-  params
-}: {
-  params: Promise<{ id: string }>
-}) {
-  const { id } = use(params)
+export default function WapDetailPage() {
+  const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const { sessionToken, loading: sessionLoading } = useSession()
   const bookmark = useQuery(
@@ -94,11 +90,23 @@ export default function WapDetailPage({
           src={b.image}
           alt=''
           className='mb-4 h-48 w-full rounded-lg object-cover'
+          onError={e => {
+            ;(e.target as HTMLImageElement).style.display = 'none'
+          }}
         />
       )}
 
       <div className='mb-4 flex items-start gap-3'>
-        {b.favicon && <img src={b.favicon} alt='' className='mt-1 h-6 w-6' />}
+        {b.favicon && (
+          <img
+            src={b.favicon}
+            alt=''
+            className='mt-1 h-6 w-6'
+            onError={e => {
+              ;(e.target as HTMLImageElement).style.visibility = 'hidden'
+            }}
+          />
+        )}
         <div className='min-w-0 flex-1'>
           <h1 className='text-heading font-bold text-text-primary'>
             {b.title || new URL(b.url).hostname}

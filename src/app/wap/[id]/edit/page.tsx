@@ -4,17 +4,13 @@ import { BackIcon } from '@/components/GeometricIcons'
 import { useSession } from '@/lib/use-session'
 import { useMutation, useQuery } from 'convex/react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { use, useEffect, useState } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 
-export default function EditWapPage({
-  params
-}: {
-  params: Promise<{ id: string }>
-}) {
-  const { id } = use(params)
+export default function EditWapPage() {
+  const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const { sessionToken, loading: sessionLoading } = useSession()
   const bookmark = useQuery(
