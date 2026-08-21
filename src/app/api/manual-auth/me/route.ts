@@ -1,6 +1,5 @@
 export const runtime = 'nodejs'
 
-import { dedup } from '@/lib/request-dedup'
 import { ConvexHttpClient } from 'convex/browser'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
@@ -17,8 +16,10 @@ export async function GET() {
   const token = cookies().get('waps_session')?.value
   if (!token) return NextResponse.json({ user: null })
 
-  const data = await dedup(`session:${token}`, () =>
-    getClient().query(api.authManual.sessionUser, { token })
-  )
-  return NextResponse.json(data)
+  const data = await getClient().query(api.authManual.sessionUser, { token })
+  if (!data) return NextResponse.json({ user: null })
+
+  return NextResponse.json({
+    user: { id: data._id, email: data.email, name: data.name }
+  })
 }

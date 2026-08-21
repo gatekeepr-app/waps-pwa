@@ -5,12 +5,13 @@
   "description": "Your Bookmarking Buddy",
   "lang": "en-US",
   "dir": "ltr",
-  "scope": "/explore",
-  "start_url": "/explore",
+  "scope": "/",
+  "start_url": "/bookmarks",
   "display": "standalone",
   "share_target": {
     "action": "/add",
     "method": "GET",
+    "enctype": "application/x-www-form-urlencoded",
     "params": {
       "title": "title",
       "text": "text",
@@ -18,8 +19,8 @@
     }
   },
   "display_override": ["standalone", "minimal-ui"],
-  "theme_color": "#FF4D2E",
-  "background_color": "#0F0F10",
+  "theme_color": "#000000",
+  "background_color": "#000000",
   "orientation": "portrait",
   "icons": [
     {

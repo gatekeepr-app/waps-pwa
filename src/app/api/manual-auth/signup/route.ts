@@ -1,7 +1,5 @@
-// app/api/auth/manual/signup/route.ts
 export const runtime = 'nodejs'
 
-import { rateLimit } from '@/lib/request-dedup'
 import { ConvexHttpClient } from 'convex/browser'
 import { randomBytes } from 'crypto'
 import { NextResponse } from 'next/server'
@@ -23,21 +21,14 @@ export async function POST(req: Request) {
   try {
     const { email, password, name } = bodySchema.parse(await req.json())
 
-    const rl = rateLimit(`signup:${email}`, 3, 3600_000)
-    if (!rl.allowed) {
-      return NextResponse.json(
-        { error: 'Too many signup attempts. Try again later.' },
-        { status: 429 }
-      )
-    }
-
     const { userId } = await client().mutation(api.authManual.signup, {
       email,
       password,
       name
     })
 
-    // (Optional) create session on signup
+    await client().mutation(api.categories.ensureDefaults, { userId })
+
     const token = randomBytes(32).toString('base64url')
     const maxAgeDays = 30
     const expiresAt = Date.now() + maxAgeDays * 24 * 60 * 60 * 1000
@@ -48,7 +39,7 @@ export async function POST(req: Request) {
       expiresAt
     })
 
-    const res = NextResponse.json({ ok: true })
+    const res = NextResponse.json({ ok: true, userId })
     res.cookies.set('waps_session', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

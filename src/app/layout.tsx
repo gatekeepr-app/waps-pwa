@@ -1,4 +1,3 @@
-import BottomNav from '@/components/Layout/BottomNav'
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import { ConvexClientProvider } from './ConvexClientProvider'
@@ -8,7 +7,7 @@ import PwaRegister from './pwa-register'
 const inter = Inter({ subsets: ['latin'] })
 
 const APP_NAME = 'Waps'
-const APP_DEFAULT_TITLE = 'Waps - Your Bookmarking Buddy'
+const APP_DEFAULT_TITLE = 'Waps'
 const APP_TITLE_TEMPLATE = '%s - Waps'
 const APP_DESCRIPTION = 'Your Bookmarking Buddy'
 
@@ -22,14 +21,14 @@ export const metadata: Metadata = {
   description: APP_DESCRIPTION,
   manifest: '/manifest.json',
   other: {
+    'mobile-web-app-capable': 'yes',
     'apple-mobile-web-app-capable': 'yes',
     'apple-mobile-web-app-status-bar-style': 'black-translucent'
   },
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'default',
+    statusBarStyle: 'black-translucent',
     title: APP_DEFAULT_TITLE
-    // startUpImage: [],
   },
   formatDetection: {
     telephone: false
@@ -54,7 +53,7 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: '#FF4D2E'
+  themeColor: '#000000'
 }
 
 export default function RootLayout({
@@ -70,7 +69,7 @@ export default function RootLayout({
           content='width=device-width, initial-scale=1, viewport-fit=cover'
         />
         <link rel='manifest' href='/manifest.json' />
-        <meta name='apple-mobile-web-app-capable' content='yes' />
+        <meta name='mobile-web-app-capable' content='yes' />
         <meta
           name='apple-mobile-web-app-status-bar-style'
           content='black-translucent'
@@ -80,9 +79,8 @@ export default function RootLayout({
       <body className={inter.className}>
         <ConvexClientProvider>
           <PwaRegister />
-          <div className='mx-auto flex min-h-screen flex-col'>
+          <div className='mx-auto flex min-h-screen flex-col bg-background'>
             <main className='flex grow flex-col'>{children}</main>
-            <BottomNav />
           </div>
         </ConvexClientProvider>
       </body>

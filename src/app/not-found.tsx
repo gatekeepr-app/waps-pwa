@@ -1,19 +1,23 @@
-import { Button } from '@/components/ui/button'
 import Link from 'next/link'
 
 export default function NotFound() {
   return (
-    <main className='waps-bg flex min-h-screen flex-col items-center justify-center p-6 text-white'>
-      <h1 className='text-6xl font-bold text-orange-400 drop-shadow-lg'>404</h1>
-      <p className='mt-4 text-lg text-white/70'>
-        This page could not be found.
-      </p>
-
-      <div className='mt-6'>
-        <Link href='/'>
-          <Button className='waps-btn'>Go Home</Button>
+    <div className='flex min-h-screen flex-col items-center justify-center bg-background px-4'>
+      <div className='text-center'>
+        <div className='mb-4 text-6xl font-bold text-primary'>404</div>
+        <h1 className='mb-2 text-xl font-bold text-text-primary'>
+          Page not found
+        </h1>
+        <p className='mb-6 text-sm text-text-secondary'>
+          The page you&apos;re looking for doesn&apos;t exist or has been moved.
+        </p>
+        <Link
+          href='/bookmarks'
+          className='inline-block rounded-md bg-primary px-4 py-2 text-sm font-bold uppercase tracking-wider text-white transition-colors hover:bg-primary/90'
+        >
+          Back to Bookmarks
         </Link>
       </div>
-    </main>
+    </div>
   )
 }

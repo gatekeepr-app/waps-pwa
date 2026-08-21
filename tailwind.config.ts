@@ -16,57 +16,50 @@ const config: Config = {
       }
     },
     extend: {
-      backgroundImage: {
-        'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-        'gradient-conic':
-          'conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))'
+      colors: {
+        background: '#000000',
+        surface: '#111111',
+        border: '#1a1a1a',
+        primary: {
+          DEFAULT: '#f97316',
+          foreground: '#ffffff'
+        },
+        'text-primary': '#ffffff',
+        'text-secondary': '#555555',
+        'text-tertiary': '#333333',
+        destructive: {
+          DEFAULT: '#ef4444',
+          foreground: '#ffffff'
+        },
+        'unread-dot': '#ffffff',
+        splash: '#0a0a0f'
       },
       borderRadius: {
-        lg: 'var(--radius)',
-        md: 'calc(var(--radius) - 2px)',
-        sm: 'calc(var(--radius) - 4px)'
+        DEFAULT: '6px',
+        sm: '4px',
+        md: '6px',
+        lg: '8px'
       },
-      colors: {
-        background: 'hsl(var(--background))',
-        foreground: 'hsl(var(--foreground))',
-        card: {
-          DEFAULT: 'hsl(var(--card))',
-          foreground: 'hsl(var(--card-foreground))'
-        },
-        popover: {
-          DEFAULT: 'hsl(var(--popover))',
-          foreground: 'hsl(var(--popover-foreground))'
-        },
-        primary: {
-          DEFAULT: 'hsl(var(--primary))',
-          foreground: 'hsl(var(--primary-foreground))'
-        },
-        secondary: {
-          DEFAULT: 'hsl(var(--secondary))',
-          foreground: 'hsl(var(--secondary-foreground))'
-        },
-        muted: {
-          DEFAULT: 'hsl(var(--muted))',
-          foreground: 'hsl(var(--muted-foreground))'
-        },
-        accent: {
-          DEFAULT: 'hsl(var(--accent))',
-          foreground: 'hsl(var(--accent-foreground))'
-        },
-        destructive: {
-          DEFAULT: 'hsl(var(--destructive))',
-          foreground: 'hsl(var(--destructive-foreground))'
-        },
-        border: 'hsl(var(--border))',
-        input: 'hsl(var(--input))',
-        ring: 'hsl(var(--ring))',
-        chart: {
-          '1': 'hsl(var(--chart-1))',
-          '2': 'hsl(var(--chart-2))',
-          '3': 'hsl(var(--chart-3))',
-          '4': 'hsl(var(--chart-4))',
-          '5': 'hsl(var(--chart-5))'
-        }
+      fontSize: {
+        heading: [
+          '22px',
+          { lineHeight: '28px', fontWeight: '700', letterSpacing: '-0.02em' }
+        ],
+        section: ['16px', { lineHeight: '22px', fontWeight: '700' }],
+        body: ['14px', { lineHeight: '20px' }],
+        'card-title': ['14px', { lineHeight: '20px', fontWeight: '500' }],
+        label: [
+          '10px',
+          { lineHeight: '14px', fontWeight: '700', letterSpacing: '0.1em' }
+        ],
+        tag: [
+          '9px',
+          { lineHeight: '12px', fontWeight: '700', letterSpacing: '0.05em' }
+        ],
+        tab: [
+          '10px',
+          { lineHeight: '14px', fontWeight: '700', letterSpacing: '0.15em' }
+        ]
       }
     }
   },
