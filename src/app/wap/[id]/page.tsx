@@ -11,7 +11,7 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useSession } from '@/lib/use-session'
 import { useMutation, useQuery } from 'convex/react'
-import { Globe, Heart } from 'lucide-react'
+import { Check, Globe, Heart } from 'lucide-react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useState } from 'react'
@@ -39,11 +39,7 @@ export default function WapDetailPage() {
   const [copied, setCopied] = useState(false)
 
   if (sessionLoading || !bookmark) {
-    return (
-      <div className='flex min-h-screen items-center justify-center bg-background'>
-        <div className='text-sm text-text-secondary'>Loading...</div>
-      </div>
-    )
+    return <DetailSkeleton />
   }
 
   const b = bookmark as any
@@ -143,46 +139,36 @@ export default function WapDetailPage() {
         <p className='mb-4 text-sm text-text-secondary'>{b.description}</p>
       )}
 
-      <div className='mb-4 flex flex-wrap gap-2'>
-        <a
+      <div className='waps-card mb-4 flex items-start justify-between px-3 py-4 sm:px-7'>
+        <DetailAction
           href={b.url}
-          target='_blank'
-          rel='noopener noreferrer'
-          className='waps-btn-outline flex items-center gap-2'
-        >
-          <ExternalLinkIcon size={14} />
-          Open
-        </a>
-        <Link
+          external
+          icon={<ExternalLinkIcon size={16} />}
+          label='Open'
+        />
+        <DetailAction
           href={`/wap/${b._id}/edit`}
-          className='waps-btn-outline flex items-center gap-2'
-        >
-          <EditIcon size={14} />
-          Edit
-        </Link>
-        <button
+          icon={<EditIcon size={16} />}
+          label='Edit'
+        />
+        <DetailAction
           onClick={handleShare}
-          className='waps-btn-outline flex items-center gap-2'
-        >
-          <ShareIcon size={14} />
-          {copied ? 'Copied!' : 'Share'}
-        </button>
-        <button
+          icon={copied ? <Check size={16} /> : <ShareIcon size={16} />}
+          label={copied ? 'Copied' : 'Share'}
+          tone={copied ? 'success' : 'default'}
+        />
+        <DetailAction
           onClick={handleTogglePublic}
-          className={`waps-btn-outline flex items-center gap-2 ${
-            b.isPublic ? 'border-primary text-primary' : ''
-          }`}
-        >
-          <Globe size={14} />
-          {b.isPublic ? 'Public' : 'Make public'}
-        </button>
-        <button
+          icon={<Globe size={16} />}
+          label={b.isPublic ? 'Public' : 'Publish'}
+          tone={b.isPublic ? 'active' : 'default'}
+        />
+        <DetailAction
           onClick={handleDelete}
-          className='waps-btn-outline flex items-center gap-2 text-destructive'
-        >
-          <DeleteIcon size={14} />
-          Trash
-        </button>
+          icon={<DeleteIcon size={16} />}
+          label='Trash'
+          tone='danger'
+        />
       </div>
 
       {b.isPublic && (
@@ -248,6 +234,99 @@ export default function WapDetailPage() {
       )}
 
       <Recommendations b={b} sessionToken={sessionToken} />
+    </div>
+  )
+}
+
+const ACTION_TONES: Record<string, string> = {
+  default: 'text-text-secondary',
+  active: 'text-primary',
+  danger: 'text-destructive',
+  success: 'text-emerald-400'
+}
+
+interface DetailActionProps {
+  icon: React.ReactNode
+  label: string
+  href?: string
+  external?: boolean
+  onClick?: () => void
+  tone?: 'default' | 'active' | 'danger' | 'success'
+}
+
+function DetailAction({
+  icon,
+  label,
+  href,
+  external,
+  onClick,
+  tone = 'default'
+}: DetailActionProps) {
+  const inner = (
+    <>
+      <span
+        className={`flex h-10 w-10 items-center justify-center rounded-full border transition-colors ${
+          tone === 'active'
+            ? 'border-primary/60 bg-primary/10'
+            : 'border-border group-hover:border-current'
+        }`}
+      >
+        {icon}
+      </span>
+      <span className='text-tag font-bold uppercase tracking-wider'>
+        {label}
+      </span>
+    </>
+  )
+  const cls = `group flex w-16 flex-col items-center gap-1.5 py-1 transition-colors ${ACTION_TONES[tone]}`
+
+  if (href && external)
+    return (
+      <a href={href} target='_blank' rel='noopener noreferrer' className={cls}>
+        {inner}
+      </a>
+    )
+  if (href)
+    return (
+      <Link href={href} className={cls}>
+        {inner}
+      </Link>
+    )
+  return (
+    <button type='button' onClick={onClick} className={cls}>
+      {inner}
+    </button>
+  )
+}
+
+function DetailSkeleton() {
+  return (
+    <div className='mx-auto max-w-lg px-4 pb-24 pt-4'>
+      <div className='mb-4 h-4 w-16 animate-pulse rounded bg-surface' />
+      <div className='mb-4 h-48 animate-pulse rounded-lg bg-surface' />
+      <div className='mb-4 flex items-start gap-3'>
+        <div className='mt-1 h-6 w-6 animate-pulse rounded-full bg-surface' />
+        <div className='flex-1 space-y-2'>
+          <div className='h-5 w-3/4 animate-pulse rounded bg-surface' />
+          <div className='h-3 w-32 animate-pulse rounded bg-surface' />
+        </div>
+      </div>
+      <div className='waps-card mb-4 flex items-start justify-between px-3 py-4 sm:px-7'>
+        {[0, 1, 2, 3, 4].map(i => (
+          <div key={i} className='flex w-16 flex-col items-center gap-1.5'>
+            <div className='h-10 w-10 animate-pulse rounded-full bg-surface' />
+            <div className='h-2.5 w-12 animate-pulse rounded bg-surface' />
+          </div>
+        ))}
+      </div>
+      <div className='waps-card p-4'>
+        <div className='mb-3 h-3 w-10 animate-pulse rounded bg-surface' />
+        <div className='flex gap-2'>
+          <div className='h-8 w-20 animate-pulse rounded-full bg-surface' />
+          <div className='h-8 w-16 animate-pulse rounded-full bg-surface' />
+          <div className='h-8 w-24 animate-pulse rounded-full bg-surface' />
+        </div>
+      </div>
     </div>
   )
 }
