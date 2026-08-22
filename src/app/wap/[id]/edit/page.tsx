@@ -252,6 +252,7 @@ export default function EditWapPage() {
 
       <main className='mx-auto w-full max-w-2xl flex-1 px-4 pb-36 pt-5'>
         <form
+          id='edit-wap-form'
           onSubmit={e => {
             e.preventDefault()
             save()
@@ -440,6 +441,7 @@ export default function EditWapPage() {
           </button>
           <button
             type='submit'
+            form='edit-wap-form'
             disabled={busy}
             className='waps-btn h-11 flex-[2] items-center justify-center active:scale-[0.98]'
           >

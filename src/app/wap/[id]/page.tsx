@@ -210,15 +210,19 @@ export default function WapDetailPage() {
             </span>
           ))}
         </div>
-        <form onSubmit={handleAddTag} className='mt-2 flex gap-2'>
+        <form onSubmit={handleAddTag} className='mt-2 flex min-w-0 gap-2'>
           <input
             type='text'
             value={newTag}
             onChange={e => setNewTag(e.target.value)}
             placeholder='Add tag...'
-            className='waps-input flex-1'
+            className='waps-input min-w-0 flex-1'
           />
-          <button type='submit' className='waps-btn px-3'>
+          <button
+            type='submit'
+            aria-label='Add tag'
+            className='waps-btn flex-shrink-0 px-3'
+          >
             <LinkIcon size={14} />
           </button>
         </form>
@@ -355,7 +359,7 @@ function Recommendations({
   }
 
   return (
-    <div className='waps-card p-4'>
+    <section>
       <div className='waps-label mb-3'>You might also like</div>
 
       {similar !== undefined && similar.length > 0 && (
@@ -363,31 +367,11 @@ function Recommendations({
           <div className='mb-2 text-tag font-bold uppercase tracking-wider text-text-secondary'>
             In your library
           </div>
-          <ul className='mb-4 space-y-1.5'>
-            {similar.map((s: any) => (
-              <li key={s._id}>
-                <Link
-                  href={`/wap/${s._id}`}
-                  className='flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-surface'
-                >
-                  {s.favicon && (
-                    <img
-                      src={s.favicon}
-                      alt=''
-                      className='h-4 w-4 flex-shrink-0'
-                      onError={e => {
-                        ;(e.target as HTMLImageElement).style.visibility =
-                          'hidden'
-                      }}
-                    />
-                  )}
-                  <span className='min-w-0 flex-1 truncate text-sm text-text-primary'>
-                    {s.title || s.url}
-                  </span>
-                </Link>
-              </li>
+          <div className='mb-4 grid grid-cols-2 gap-3'>
+            {similar.slice(0, MAX_SUGGESTIONS).map((s: any) => (
+              <RecCard key={s._id} item={s} href={`/wap/${s._id}`} />
             ))}
-          </ul>
+          </div>
         </>
       )}
 
@@ -396,34 +380,96 @@ function Recommendations({
           <div className='mb-2 text-tag font-bold uppercase tracking-wider text-text-secondary'>
             Loved by the community
           </div>
-          <ul className='space-y-1.5'>
-            {related.map((r: any) => (
-              <li key={`rel-${r._id}`}>
-                <Link
-                  href={r.publicId ? `/share/${r.publicId}` : r.url}
-                  className='flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-surface'
-                >
-                  {r.favicon && (
-                    <img
-                      src={r.favicon}
-                      alt=''
-                      className='h-4 w-4 flex-shrink-0'
-                      onError={e => {
-                        ;(e.target as HTMLImageElement).style.visibility =
-                          'hidden'
-                      }}
-                    />
-                  )}
-                  <span className='min-w-0 flex-1 truncate text-sm text-text-primary'>
-                    {r.title || r.url}
-                  </span>
-                  <Heart size={11} className='flex-shrink-0 text-primary' />
-                </Link>
-              </li>
+          <div className='grid grid-cols-2 gap-3'>
+            {related.slice(0, MAX_SUGGESTIONS).map((r: any) => (
+              <RecCard
+                key={`rel-${r._id}`}
+                item={r}
+                href={r.publicId ? `/share/${r.publicId}` : r.url}
+                external={!r.publicId}
+              />
             ))}
-          </ul>
+          </div>
         </>
       )}
-    </div>
+    </section>
+  )
+}
+
+const MAX_SUGGESTIONS = 6
+
+function RecCard({
+  item,
+  href,
+  external = false
+}: {
+  item: any
+  href: string
+  external?: boolean
+}) {
+  let host = item.url
+  try {
+    host = new URL(item.url).hostname.replace(/^www\./, '')
+  } catch {}
+
+  const inner = (
+    <>
+      {item.image && (
+        <img
+          src={item.image}
+          alt=''
+          className='h-24 w-full object-cover'
+          loading='lazy'
+          onError={e => {
+            ;(e.target as HTMLImageElement).style.visibility = 'hidden'
+          }}
+        />
+      )}
+      <div className='p-3'>
+        <div className='flex items-center gap-2'>
+          {item.favicon && (
+            <img
+              src={item.favicon}
+              alt=''
+              className='h-4 w-4 flex-shrink-0'
+              loading='lazy'
+              onError={e => {
+                ;(e.target as HTMLImageElement).style.visibility = 'hidden'
+              }}
+            />
+          )}
+          <div className='min-w-0 flex-1 truncate text-xs font-bold text-text-primary'>
+            {item.title || host}
+          </div>
+          {external && (
+            <Heart
+              size={11}
+              className='flex-shrink-0 text-primary'
+              fill='currentColor'
+            />
+          )}
+        </div>
+        {item.description && (
+          <div className='mt-1 line-clamp-2 text-xs leading-relaxed text-text-secondary'>
+            {item.description}
+          </div>
+        )}
+      </div>
+    </>
+  )
+
+  const cls =
+    'waps-card block overflow-hidden transition-transform active:scale-[0.98]'
+
+  if (external)
+    return (
+      <a href={href} target='_blank' rel='noopener noreferrer' className={cls}>
+        {inner}
+      </a>
+    )
+  return (
+    <Link href={href} className={cls}>
+      {inner}
+    </Link>
   )
 }

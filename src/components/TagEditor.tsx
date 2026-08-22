@@ -89,7 +89,7 @@ export function TagEditor({
         placeholder={
           tags.length >= MAX_TAGS ? `Max ${MAX_TAGS} tags` : placeholder
         }
-        className='waps-input w-full'
+        className='waps-input w-full min-w-0'
       />
 
       {available.length > 0 && (

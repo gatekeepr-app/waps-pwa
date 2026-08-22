@@ -1,34 +1,38 @@
 # Waps — Your Bookmarking Buddy
 
-A Play-Store-like directory for the web. Save websites into boards, share one publicly, explore others' boards without duplicates, and get smart descriptions via Scan.
+A mobile-first, installable bookmarking PWA. Save links ("waps") with automatic metadata scanning, organize them with categories and tags, share them publicly, discover what the community is saving, and read saved articles distraction-free.
 
 Built with **Next.js 14**, **Convex**, **Tailwind CSS**, and **Serwist** (PWAs).
 
+**Current stable release: v1.0.0**
+
 ## Features
 
-- **Add websites** — Paste a URL, Waps scans it for title/description/category, then save to any board
-- **Boards** — Create public or private boards. Reorder, rename, delete them
-- **Discover** — Browse the public feed of websites saved by everyone, grouped by category
-- **Import bookmarks** — Upload an HTML bookmark export from Chrome/Firefox/Safari/Edge, or use the browser share sheet
-- **Notes** — Add personal notes to any saved website, inline on cards or on the detail page
-- **Offline support** — Service worker caches key pages with a custom offline page
-- **PWA** — Installable on mobile/desktop with a manifest and service worker
-- **Auth** — Custom email/password auth with password reset flow
-- **Rate limited** — Signin (5/min), signup (3/hour) rate limiting to prevent abuse
+- **Save waps** — Paste a URL; it's normalized automatically, checked for duplicates while you type, and scanned in the background for title/description/favicon/hero image/full text
+- **Smart categorization** — Default category set out of the box, plus auto-suggestions learned from how you've categorized similar links before
+- **Tags** — Tag editor with suggestions from your own library, plus a tag manager page (rename/purge across all waps)
+- **Explore** — Public feed ranked by engagement with time decay (trending) or newest-first
+- **Public sharing** — Make any wap public, mint a short share link (`/share/{publicId}`), see a "N people love this link" nudge while saving
+- **Reader mode** — Distraction-free view built from extracted article text, also searchable
+- **Library tools** — Search across title/URL/description/text, grid & list views, category filters, pin & read state
+- **Trash** — Soft delete with restore, permanent delete, empty trash, and a scheduled 30-day purge
+- **Browser extension** — Pair via one-time codes to save from any desktop browser (rate-limited redemption, rotating API keys)
+- **Import bookmarks** — Bulk import from HTML exports with per-URL dedupe
+- **PWA** — Installable on mobile/desktop, offline caching with a custom offline page
+- **Auth** — Custom email/password auth (bcrypt + session tokens) with password reset emails via Resend
 
 ## Tech Stack
 
-| Layer              | Technology                                   |
-| ------------------ | -------------------------------------------- |
-| Framework          | Next.js 14 (App Router)                      |
-| Backend / Database | Convex                                       |
-| Auth               | Custom (bcryptjs + Convex + cookie sessions) |
-| Styling            | Tailwind CSS + shadcn/ui                     |
-| PWA                | Serwist (service worker + manifest)          |
-| Email              | Resend                                       |
-| Icons              | Lucide React                                 |
-| Animation          | Framer Motion                                |
-| Rate Limiting      | lru-cache (in-memory)                        |
+| Layer              | Technology                              |
+| ------------------ | --------------------------------------- |
+| Framework          | Next.js 14 (App Router)                 |
+| Backend / Database | Convex                                  |
+| Auth               | Custom (bcryptjs + Convex + sessions)   |
+| Styling            | Tailwind CSS + shadcn/ui primitives     |
+| PWA                | Serwist (service worker + manifest)     |
+| Email              | Resend                                  |
+| Icons              | Custom geometric SVG set + Lucide React |
+| Notifications      | Sonner                                  |
 
 ## Getting Started
 
@@ -40,8 +44,8 @@ Built with **Next.js 14**, **Convex**, **Tailwind CSS**, and **Serwist** (PWAs).
 ### Installation
 
 ```sh
-git clone https://github.com/mmohsin18/waps.git
-cd waps
+git clone https://github.com/gatekeepr-app/waps-pwa.git
+cd waps-pwa
 npm install
 ```
 
@@ -53,13 +57,14 @@ Copy `.env.example` to `.env.local` and fill in the values:
 cp .env.example .env.local
 ```
 
-| Variable                      | Required              | Description                                       |
-| ----------------------------- | --------------------- | ------------------------------------------------- |
-| `NEXT_PUBLIC_CONVEX_URL`      | Yes                   | Your Convex deployment URL                        |
-| `NEXT_PUBLIC_CONVEX_SITE_URL` | Yes                   | Your Convex site URL                              |
-| `RESEND_API_KEY`              | No (contact/waitlist) | Resend API key for email                          |
-| `CONTACT_TO`                  | No                    | Email address to receive contact form submissions |
-| `CONTACT_FROM`                | No                    | Sender email for outgoing emails                  |
+| Variable                      | Required | Description                                |
+| ----------------------------- | -------- | ------------------------------------------ |
+| `NEXT_PUBLIC_CONVEX_URL`      | Yes      | Your Convex deployment URL                 |
+| `NEXT_PUBLIC_CONVEX_SITE_URL` | Yes      | Your Convex site URL                       |
+| `NEXT_PUBLIC_SITE_URL`        | No       | Canonical app URL used for sitemap/robots  |
+| `RESEND_API_KEY`              | No       | Resend API key for password reset emails   |
+| `CONTACT_TO`                  | No       | Email address for contact form submissions |
+| `CONTACT_FROM`                | No       | Verified sender email for outgoing emails  |
 
 ### Running Locally
 
@@ -88,40 +93,43 @@ npx convex deploy
 ```
 src/
 ├── app/
-│   ├── add/              # Add a website page (Scan + Save)
-│   ├── auth/             # Sign in / Sign up page
-│   ├── contact/          # Contact form
-│   ├── explore/          # Public discover feed + detail pages
-│   ├── forgot-password/  # Password reset request
-│   ├── import/           # Bookmark import (HTML upload + browser share)
-│   ├── privacy/          # Privacy policy
-│   ├── profile/          # Board management
-│   ├── reset-password/   # Password reset with token
-│   ├── terms/            # Terms of service
-│   ├── waps/             # Your saved websites
-│   ├── ~offline/         # Offline page
-│   ├── layout.tsx        # Root layout with BottomNav
-│   ├── page.tsx          # Landing / marketing page
-│   ├── sw.ts             # Service worker
-│   ├── robots.ts         # robots.txt
-│   └── sitemap.ts        # sitemap.xml
+│   ├── (auth)/            # Login / forgot-password / reset-password (+ shared layout)
+│   ├── (tabs)/            # bookmarks / explore / profile (bottom tab bar)
+│   ├── add/               # Add a wap (full-screen form)
+│   ├── api/manual-auth/   # Session endpoints (signin/signup/signout/me/reset)
+│   ├── reader/[id]/       # Reader mode
+│   ├── share/[publicId]/  # Public share page
+│   ├── tags/              # Tag manager
+│   ├── wap/[id]/          # Wap detail + edit
+│   ├── layout.tsx         # Root layout (metadata, PWA hooks, Toaster)
+│   ├── manifest.json      # Web app manifest
+│   ├── sitemap.ts         # sitemap.xml
+│   ├── robots.ts          # robots.txt
+│   └── sw.ts              # Serwist service worker
 ├── components/
-│   ├── Elements/         # Reusable UI elements
-│   ├── Features/         # Feature-specific (WaitlistForm)
-│   ├── Layout/           # Page layout components (BottomNav, WapCard, etc.)
-│   └── ui/               # shadcn/ui components
+│   ├── GeometricIcons.tsx # Custom SVG icon set
+│   ├── TabBar.tsx         # Bottom navigation
+│   ├── TagEditor.tsx      # Shared tag input with suggestions
+│   ├── ToggleSwitch.tsx   # Accessible switch control
+│   └── ui/                # shadcn/ui primitives (alert, select)
 └── lib/
-    ├── auth-api.ts       # Auth API helpers (signIn, signUp, fetchMe)
-    └── request-dedup.ts  # Async dedup + rate limiting utilities
+    ├── auth-api.ts        # Auth helpers (signIn, signUp, fetchMe)
+    ├── url.ts             # URL normalization (client copy)
+    └── use-session.ts     # Session hook
 
 convex/
-├── authManual.ts         # Custom auth mutations (register, login, reset password)
-├── boardItems.ts         # Board membership operations
-├── boards.ts             # Board CRUD (create, rename, delete, setPublic)
-├── waps.ts               # Wap-level operations (search, detail, bulk import, etc.)
-├── websites.ts           # Website lookup + explore feed
-├── schema.ts             # Database schema
-└── actions/websites.ts   # Website scanning action
+├── bookmarks.ts           # Core CRUD, duplicate checks, explore ranking,
+│                          # similarity/recommendations, tags, trash
+├── categories.ts          # Category defaults + CRUD
+├── collections.ts         # Collection grouping (backend only)
+├── metadata.ts            # Background metadata/text extraction action
+├── pairing.ts             # Extension pairing codes + rate limiting
+├── http.ts                # HTTP actions (extension save endpoint)
+├── crons.ts               # Scheduled jobs (trash purge)
+├── authManual.ts          # Custom auth mutations
+└── schema.ts              # Database schema
+
+browser-extension/         # Companion browser extension (MV3)
 ```
 
 ## Scripts
@@ -132,13 +140,14 @@ convex/
 | `npm run build`     | Build for production        |
 | `npm start`         | Start production server     |
 | `npm run lint`      | Lint with ESLint            |
+| `npm run format`    | Format with Prettier        |
 | `npx convex dev`    | Start Convex dev backend    |
 | `npx convex deploy` | Deploy Convex to production |
 
 ## Deployment
 
 1. Deploy Convex: `npx convex deploy`
-2. Set `NEXT_PUBLIC_CONVEX_URL` to your Convex production URL
+2. Set `NEXT_PUBLIC_CONVEX_URL` (and optionally `NEXT_PUBLIC_SITE_URL`) in your host's environment
 3. Build: `npm run build`
 4. Deploy the Next.js app to Vercel, Railway, or any Node.js host
 
