@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/select'
 import { useSession } from '@/lib/use-session'
 import { useMutation, useQuery } from 'convex/react'
+import Image from 'next/image'
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { api } from '../../../../convex/_generated/api'
@@ -222,11 +223,13 @@ export default function BookmarksPage() {
                 aria-label={`Select ${b.title || b.url}`}
               />
               {b.image && (
-                <img
+                <Image
                   src={b.image}
                   alt=''
-                  className='h-28 w-full object-cover'
+                  width={400}
+                  height={112}
                   loading='lazy'
+                  className='h-28 w-full object-cover'
                   onError={e => {
                     ;(e.target as HTMLImageElement).style.visibility = 'hidden'
                   }}
@@ -235,11 +238,13 @@ export default function BookmarksPage() {
               <div className='p-3'>
                 <div className='mb-1 flex items-center gap-2'>
                   {b.favicon && (
-                    <img
+                    <Image
                       src={b.favicon}
                       alt=''
-                      className='h-4 w-4'
+                      width={16}
+                      height={16}
                       loading='lazy'
+                      className='h-4 w-4'
                       onError={e => {
                         ;(e.target as HTMLImageElement).style.visibility =
                           'hidden'
@@ -300,11 +305,13 @@ export default function BookmarksPage() {
                 aria-label={`Select ${b.title || b.url}`}
               />
               {b.favicon && (
-                <img
+                <Image
                   src={b.favicon}
                   alt=''
-                  className='h-8 w-8 flex-shrink-0'
+                  width={32}
+                  height={32}
                   loading='lazy'
+                  className='h-8 w-8 flex-shrink-0'
                   onError={e => {
                     ;(e.target as HTMLImageElement).style.visibility = 'hidden'
                   }}

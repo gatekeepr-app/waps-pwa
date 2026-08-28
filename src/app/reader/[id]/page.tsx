@@ -3,6 +3,7 @@
 import { BackIcon, ExternalLinkIcon } from '@/components/GeometricIcons'
 import { useSession } from '@/lib/use-session'
 import { useQuery } from 'convex/react'
+import Image from 'next/image'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { api } from '../../../../convex/_generated/api'
@@ -39,9 +40,11 @@ export default function ReaderPage() {
 
       <div className='mb-4 flex items-center gap-2'>
         {b.favicon && (
-          <img
+          <Image
             src={b.favicon}
             alt=''
+            width={20}
+            height={20}
             className='h-5 w-5'
             onError={e => {
               ;(e.target as HTMLImageElement).style.visibility = 'hidden'
@@ -64,9 +67,11 @@ export default function ReaderPage() {
       </a>
 
       {b.image && (
-        <img
+        <Image
           src={b.image}
           alt=''
+          width={600}
+          height={192}
           className='mb-4 h-48 w-full rounded-lg object-cover'
         />
       )}

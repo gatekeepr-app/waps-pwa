@@ -2,6 +2,7 @@
 
 import { useQuery } from 'convex/react'
 import { Heart } from 'lucide-react'
+import Image from 'next/image'
 import Link from 'next/link'
 import { useState } from 'react'
 import { api } from '../../../../convex/_generated/api'
@@ -19,11 +20,13 @@ function WapCard({ b }: { b: any }) {
       className='waps-card overflow-hidden transition-transform active:scale-[0.98]'
     >
       {b.image && (
-        <img
+        <Image
           src={b.image}
           alt=''
-          className='h-28 w-full object-cover'
+          width={400}
+          height={112}
           loading='lazy'
+          className='h-28 w-full object-cover'
           onError={e => {
             ;(e.target as HTMLImageElement).style.visibility = 'hidden'
           }}
@@ -32,11 +35,13 @@ function WapCard({ b }: { b: any }) {
       <div className='p-3'>
         <div className='mb-1 flex items-center gap-2'>
           {b.favicon && (
-            <img
+            <Image
               src={b.favicon}
               alt=''
-              className='h-4 w-4'
+              width={16}
+              height={16}
               loading='lazy'
+              className='h-4 w-4'
               onError={e => {
                 ;(e.target as HTMLImageElement).style.visibility = 'hidden'
               }}

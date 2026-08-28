@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/select'
 import { useSession } from '@/lib/use-session'
 import { useMutation, useQuery } from 'convex/react'
+import Image from 'next/image'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -265,9 +266,11 @@ export default function EditWapPage() {
           {/* Preview */}
           <section className='waps-card overflow-hidden'>
             {b.image && (
-              <img
+              <Image
                 src={b.image}
                 alt=''
+                width={600}
+                height={176}
                 className='h-44 w-full object-cover'
                 onError={e => {
                   ;(e.target as HTMLImageElement).style.display = 'none'
@@ -277,9 +280,11 @@ export default function EditWapPage() {
             <div className='flex items-center justify-between gap-3 px-5 py-4'>
               <div className='flex min-w-0 items-center gap-2.5'>
                 {b.favicon && (
-                  <img
+                  <Image
                     src={b.favicon}
                     alt=''
+                    width={20}
+                    height={20}
                     className='h-5 w-5 flex-shrink-0'
                     onError={e => {
                       ;(e.target as HTMLImageElement).style.visibility =

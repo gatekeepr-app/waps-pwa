@@ -9,16 +9,6 @@ import {
   ShareIcon
 } from '@/components/GeometricIcons'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from '@/components/ui/dialog'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {
   Select,
   SelectContent,
@@ -29,12 +19,16 @@ import {
 import { useSession } from '@/lib/use-session'
 import { useMutation, useQuery } from 'convex/react'
 import { Check, Globe, Heart } from 'lucide-react'
+import dynamic from 'next/dynamic'
+import Image from 'next/image'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
+
+const DeleteDialog = dynamic(() => import('./delete-dialog'), { ssr: false })
 
 export default function WapDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -64,7 +58,6 @@ export default function WapDetailPage() {
   const [shareId, setShareId] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const [deleteReason, setDeleteReason] = useState('not_useful')
 
   if (sessionLoading || !bookmark) {
     return <DetailSkeleton />
@@ -87,11 +80,11 @@ export default function WapDetailPage() {
     } catch {}
   }
 
-  async function handleDelete() {
+  async function handleDelete(reason: string) {
     const result = await remove({
       id: b._id,
       sessionToken: sessionToken ?? undefined,
-      reason: deleteReason
+      reason
     })
     if (!(result as any)?.deleted) {
       toast('Wap moved to trash', {
@@ -155,9 +148,12 @@ export default function WapDetailPage() {
       </Link>
 
       {b.image && (
-        <img
+        <Image
           src={b.image}
           alt=''
+          width={600}
+          height={192}
+          priority
           className='mb-4 h-48 w-full rounded-lg object-cover'
           onError={e => {
             ;(e.target as HTMLImageElement).style.display = 'none'
@@ -167,9 +163,11 @@ export default function WapDetailPage() {
 
       <div className='mb-4 flex items-start gap-3'>
         {b.favicon && (
-          <img
+          <Image
             src={b.favicon}
             alt=''
+            width={24}
+            height={24}
             className='mt-1 h-6 w-6'
             onError={e => {
               ;(e.target as HTMLImageElement).style.visibility = 'hidden'
@@ -331,45 +329,11 @@ export default function WapDetailPage() {
 
       <Recommendations b={b} sessionToken={sessionToken} />
 
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent className='border-border bg-background text-text-primary'>
-          <DialogHeader>
-            <DialogTitle>Why remove this wap?</DialogTitle>
-            <DialogDescription>
-              This helps keep cleanup behavior understandable later.
-            </DialogDescription>
-          </DialogHeader>
-          <RadioGroup value={deleteReason} onValueChange={setDeleteReason}>
-            {[
-              ['not_useful', 'Not useful anymore'],
-              ['saved_by_mistake', 'Saved by mistake'],
-              ['duplicate', 'Duplicate or wrong link'],
-              ['privacy', 'Privacy cleanup']
-            ].map(([value, label]) => (
-              <label
-                key={value}
-                className='flex items-center gap-2 text-sm text-text-secondary'
-              >
-                <RadioGroupItem value={value} />
-                {label}
-              </label>
-            ))}
-          </RadioGroup>
-          <DialogFooter className='gap-2 sm:space-x-0'>
-            <Button
-              type='button'
-              variant='outline'
-              onClick={() => setDeleteOpen(false)}
-              className='flex-1 border-border bg-transparent text-text-primary hover:bg-surface'
-            >
-              Cancel
-            </Button>
-            <Button type='button' onClick={handleDelete} className='flex-1'>
-              Remove
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeleteDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        onDelete={handleDelete}
+      />
     </div>
   )
 }
@@ -547,11 +511,13 @@ function RecCard({
   const inner = (
     <>
       {item.image && (
-        <img
+        <Image
           src={item.image}
           alt=''
-          className='h-24 w-full object-cover'
+          width={400}
+          height={96}
           loading='lazy'
+          className='h-24 w-full object-cover'
           onError={e => {
             ;(e.target as HTMLImageElement).style.visibility = 'hidden'
           }}
@@ -560,11 +526,13 @@ function RecCard({
       <div className='p-3'>
         <div className='flex items-center gap-2'>
           {item.favicon && (
-            <img
+            <Image
               src={item.favicon}
               alt=''
-              className='h-4 w-4 flex-shrink-0'
+              width={16}
+              height={16}
               loading='lazy'
+              className='h-4 w-4 flex-shrink-0'
               onError={e => {
                 ;(e.target as HTMLImageElement).style.visibility = 'hidden'
               }}
