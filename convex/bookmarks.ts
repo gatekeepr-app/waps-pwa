@@ -107,6 +107,15 @@ export function normalizeUrlInput(raw: string): string | null {
   if (u.protocol !== 'http:' && u.protocol !== 'https:') return null
   const host = u.hostname.toLowerCase().replace(/^www\./, '')
   const path = u.pathname.replace(/\/+$/, '')
+  for (const key of Array.from(u.searchParams.keys())) {
+    if (
+      key.toLowerCase().startsWith('utm_') ||
+      key === 'fbclid' ||
+      key === 'gclid'
+    ) {
+      u.searchParams.delete(key)
+    }
+  }
   return `${u.protocol}//${host}${path}${u.search}`
 }
 
@@ -149,9 +158,39 @@ async function findExisting(
         q.eq('userId', userId).eq('url', candidate)
       )
       .first()
-    if (hit) return hit
+    if (hit && !hit.isTrashed) return hit
   }
   return null
+}
+
+async function findAnyExisting(ctx: any, rawUrl: string): Promise<any | null> {
+  for (const candidate of urlVariants(rawUrl)) {
+    const hit = await ctx.db
+      .query('bookmarks')
+      .withIndex('by_url', (q: any) => q.eq('url', candidate))
+      .first()
+    if (hit && !hit.isTrashed) return hit
+  }
+  return null
+}
+
+async function hasOtherConnection(ctx: any, bookmark: any): Promise<boolean> {
+  const sameUrl = await ctx.db
+    .query('bookmarks')
+    .withIndex('by_url', (q: any) => q.eq('url', bookmark.url))
+    .filter((q: any) =>
+      q.and(
+        q.neq(q.field('_id'), bookmark._id),
+        q.neq(q.field('isTrashed'), true)
+      )
+    )
+    .first()
+  if (sameUrl) return true
+  const all = await ctx.db
+    .query('bookmarks')
+    .filter((q: any) => q.neq(q.field('isTrashed'), true))
+    .collect()
+  return all.some((b: any) => b.sourceBookmarkId === bookmark._id)
 }
 
 function hostOf(url: string): string {
@@ -258,20 +297,31 @@ export const add = mutation({
     if (!url) throw new Error('Invalid URL')
     const existing = await findExisting(ctx, userId, url)
     if (existing) throw new Error('Bookmark already exists')
+    const source = await findAnyExisting(ctx, url)
     await bumpUrlStat(ctx, url, 1)
     const bookmarkId = await ctx.db.insert('bookmarks', {
       userId,
       url,
-      title: args.title,
+      sourceBookmarkId: source?._id,
+      title: args.title ?? source?.title,
       description: args.description,
       collectionId: args.collectionId,
       categoryId: args.categoryId,
-      isPublic: args.isPublic
+      isPublic: args.isPublic,
+      favicon: source?.favicon,
+      image: source?.image,
+      isBroken: source?.isBroken
     })
-    await ctx.scheduler.runAfter(0, (internal as any).metadata.fetchMetadata, {
-      bookmarkId,
-      url
-    })
+    if (!source) {
+      await ctx.scheduler.runAfter(
+        0,
+        (internal as any).metadata.fetchMetadata,
+        {
+          bookmarkId,
+          url
+        }
+      )
+    }
     return bookmarkId
   }
 })
@@ -505,9 +555,17 @@ export const importAll = mutation({
     const userId = await resolveUserId(ctx, (args as any).sessionToken)
     if (!userId) throw new Error('Not authenticated')
     const seen = new Set<string>()
+    const summary = { added: 0, duplicates: 0, invalid: 0 }
     for (const b of args.bookmarks) {
       const url = normalizeUrlInput(b.url)
-      if (!url || seen.has(url)) continue
+      if (!url) {
+        summary.invalid++
+        continue
+      }
+      if (seen.has(url)) {
+        summary.duplicates++
+        continue
+      }
       seen.add(url)
       const existing = await findExisting(ctx, userId, url)
       if (!existing) {
@@ -523,8 +581,12 @@ export const importAll = mutation({
           (internal as any).metadata.fetchMetadata,
           { bookmarkId: id, url }
         )
+        summary.added++
+      } else {
+        summary.duplicates++
       }
     }
+    return summary
   }
 })
 
@@ -560,7 +622,7 @@ export const update = mutation({
     title: v.optional(v.string()),
     description: v.optional(v.string()),
     url: v.optional(v.string()),
-    categoryId: v.optional(v.id('categories'))
+    categoryId: v.optional(v.union(v.id('categories'), v.null()))
   },
   handler: async (ctx, args) => {
     const userId = await resolveUserId(ctx, (args as any).sessionToken)
@@ -571,7 +633,12 @@ export const update = mutation({
     if (args.title !== undefined) patch.title = args.title
     if (args.description !== undefined) patch.description = args.description
     if (args.url !== undefined) patch.url = args.url
-    if (args.categoryId !== undefined) patch.categoryId = args.categoryId
+    if (args.categoryId !== undefined && args.categoryId !== null) {
+      const cat = await ctx.db.get(args.categoryId)
+      if (!cat || cat.userId !== userId) throw new Error('Invalid category')
+    }
+    if (args.categoryId !== undefined)
+      patch.categoryId = args.categoryId ?? undefined
     await ctx.db.patch(args.id, patch)
   }
 })
@@ -592,13 +659,27 @@ export const setReminder = mutation({
 })
 
 export const remove = mutation({
-  args: { id: v.id('bookmarks'), sessionToken: v.optional(v.string()) },
+  args: {
+    id: v.id('bookmarks'),
+    sessionToken: v.optional(v.string()),
+    reason: v.optional(v.string())
+  },
   handler: async (ctx, args) => {
     const userId = await resolveUserId(ctx, (args as any).sessionToken)
     if (!userId) throw new Error('Not authenticated')
     const bookmark = await ctx.db.get(args.id)
     if (!bookmark || bookmark.userId !== userId) throw new Error('Not found')
-    await ctx.db.patch(args.id, { isTrashed: true, trashedAt: Date.now() })
+    if (await hasOtherConnection(ctx, bookmark)) {
+      await ctx.db.patch(args.id, {
+        isTrashed: true,
+        trashedAt: Date.now(),
+        removalReason: args.reason
+      })
+      return { deleted: false }
+    }
+    await bumpUrlStat(ctx, bookmark.url, -1)
+    await ctx.db.delete(args.id)
+    return { deleted: true }
   }
 })
 
@@ -620,8 +701,50 @@ export const permanentDelete = mutation({
     if (!userId) throw new Error('Not authenticated')
     const b = await ctx.db.get(args.id)
     if (!b || b.userId !== userId) throw new Error('Not found')
+    if (await hasOtherConnection(ctx, b)) {
+      await ctx.db.patch(args.id, { isTrashed: true, trashedAt: Date.now() })
+      return { deleted: false }
+    }
     await bumpUrlStat(ctx, b.url, -1)
     await ctx.db.delete(args.id)
+    return { deleted: true }
+  }
+})
+
+export const batchMoveCategory = mutation({
+  args: {
+    sessionToken: v.optional(v.string()),
+    ids: v.array(v.id('bookmarks')),
+    categoryId: v.union(v.id('categories'), v.null())
+  },
+  handler: async (ctx, args) => {
+    const userId = await resolveUserId(ctx, (args as any).sessionToken)
+    if (!userId) throw new Error('Not authenticated')
+    if (args.categoryId !== null) {
+      const cat = await ctx.db.get(args.categoryId)
+      if (!cat || cat.userId !== userId) throw new Error('Invalid category')
+    }
+    for (const id of args.ids) {
+      const b = await ctx.db.get(id)
+      if (b && b.userId === userId) {
+        await ctx.db.patch(id, { categoryId: args.categoryId ?? undefined })
+      }
+    }
+  }
+})
+
+export const refreshMetadata = mutation({
+  args: { id: v.id('bookmarks'), sessionToken: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const userId = await resolveUserId(ctx, (args as any).sessionToken)
+    if (!userId) throw new Error('Not authenticated')
+    const b = await ctx.db.get(args.id)
+    if (!b || b.userId !== userId) throw new Error('Not found')
+    await ctx.scheduler.runAfter(0, (internal as any).metadata.fetchMetadata, {
+      bookmarkId: args.id,
+      url: b.url
+    })
+    return { ok: true }
   }
 })
 
@@ -637,6 +760,7 @@ export const emptyTrash = mutation({
       )
       .collect()
     for (const b of trashed) {
+      if (await hasOtherConnection(ctx, b)) continue
       await bumpUrlStat(ctx, b.url, -1)
       await ctx.db.delete(b._id)
     }
@@ -713,6 +837,7 @@ export const purgeOldTrash = mutation({
       .collect()
     for (const b of trashed) {
       if (b.trashedAt && b.trashedAt < thirtyDaysAgo) {
+        if (await hasOtherConnection(ctx, b)) continue
         await bumpUrlStat(ctx, b.url, -1)
         await ctx.db.delete(b._id)
       }
@@ -798,17 +923,28 @@ export const addByHttp = mutation({
     const url = normalizeUrlInput(args.url)
     if (!url) throw new Error('Invalid URL')
     const existing = await findExisting(ctx, args.userId, url)
-    if (existing) throw new Error('Bookmark already exists')
+    if (existing) throw new Error(`Bookmark already exists:${existing._id}`)
+    const source = await findAnyExisting(ctx, url)
     await bumpUrlStat(ctx, url, 1)
     const id = await ctx.db.insert('bookmarks', {
       userId: args.userId,
       url,
-      title: args.title
+      sourceBookmarkId: source?._id,
+      title: args.title ?? source?.title,
+      favicon: source?.favicon,
+      image: source?.image,
+      isBroken: source?.isBroken
     })
-    await ctx.scheduler.runAfter(0, (internal as any).metadata.fetchMetadata, {
-      bookmarkId: id,
-      url
-    })
+    if (!source) {
+      await ctx.scheduler.runAfter(
+        0,
+        (internal as any).metadata.fetchMetadata,
+        {
+          bookmarkId: id,
+          url
+        }
+      )
+    }
     return id
   }
 })

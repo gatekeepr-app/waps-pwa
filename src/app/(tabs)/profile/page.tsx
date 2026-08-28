@@ -4,7 +4,7 @@ import { LogOutIcon } from '@/components/GeometricIcons'
 import { signOut } from '@/lib/auth-api'
 import { useSession } from '@/lib/use-session'
 import { useMutation, useQuery } from 'convex/react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Check, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { toast } from 'sonner'
@@ -16,10 +16,13 @@ export default function ProfilePage() {
   const [pairingCode, setPairingCode] = useState<string | null>(null)
   const [pairingBusy, setPairingBusy] = useState(false)
   const [newCategory, setNewCategory] = useState('')
+  const [editingCategory, setEditingCategory] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState('')
   const [categoryBusy, setCategoryBusy] = useState(false)
 
   const generateCode = useMutation(api.pairing.generatePairingCode)
   const addCategory = useMutation(api.categories.add)
+  const renameCategory = useMutation(api.categories.rename)
   const removeCategory = useMutation(api.categories.remove)
 
   const bookmarks = useQuery(
@@ -30,6 +33,7 @@ export default function ProfilePage() {
     api.categories.list,
     sessionToken ? { sessionToken } : 'skip'
   )
+  const publicWaps = (bookmarks ?? []).filter(b => b.isPublic)
 
   async function handleSignOut() {
     try {
@@ -75,6 +79,17 @@ export default function ProfilePage() {
       toast.success(`Category "${name}" removed`)
     } catch (err: any) {
       toast.error(err?.message?.replace(/\[.*?\]\s*/, '') || "Couldn't remove")
+    }
+  }
+
+  async function handleRenameCategory(id: string) {
+    if (!sessionToken) return
+    try {
+      await renameCategory({ sessionToken, id: id as any, name: editingName })
+      setEditingCategory(null)
+      toast.success('Category updated')
+    } catch (err: any) {
+      toast.error(err?.message?.replace(/\[.*?\]\s*/, '') || "Couldn't update")
     }
   }
 
@@ -132,11 +147,34 @@ export default function ProfilePage() {
       </div>
 
       <div className='waps-card mb-4 p-6'>
+        <h2 className='mb-2 text-sm font-bold uppercase tracking-widest text-text-secondary'>
+          Public Waps
+        </h2>
+        {publicWaps.length === 0 ? (
+          <p className='text-sm text-text-secondary'>
+            Nothing public right now.
+          </p>
+        ) : (
+          <div className='space-y-2'>
+            {publicWaps.map(wap => (
+              <a
+                key={wap._id}
+                href={`/wap/${wap._id}`}
+                className='block truncate text-sm text-primary underline underline-offset-2'
+              >
+                {wap.title || wap.url}
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className='waps-card mb-4 p-6'>
         <h2 className='mb-1 text-sm font-bold uppercase tracking-widest text-text-secondary'>
           Categories
         </h2>
         <p className='mb-4 text-sm text-text-secondary'>
-          Organize your waps. Default categories can&apos;t be removed.
+          Organize your waps. Default categories can be renamed but not removed.
         </p>
 
         <form onSubmit={handleAddCategory} className='mb-4 flex gap-2'>
@@ -166,23 +204,72 @@ export default function ProfilePage() {
                 key={cat._id}
                 className='group flex items-center justify-between rounded-md px-2 py-2 transition-colors hover:bg-surface'
               >
-                <span className='truncate text-sm text-text-primary'>
-                  {cat.name}
-                </span>
-                {!cat.isDefault && (
-                  <button
-                    onClick={() => handleRemoveCategory(cat._id, cat.name)}
-                    aria-label={`Remove ${cat.name}`}
-                    className='text-text-secondary opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100'
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                )}
-                {cat.isDefault && (
-                  <span className='text-tag font-bold uppercase tracking-wider text-text-secondary'>
-                    default
+                {editingCategory === cat._id ? (
+                  <input
+                    value={editingName}
+                    onChange={e => setEditingName(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') handleRenameCategory(cat._id)
+                      if (e.key === 'Escape') setEditingCategory(null)
+                    }}
+                    maxLength={40}
+                    autoFocus
+                    className='waps-input min-w-0 flex-1 py-1 text-sm'
+                  />
+                ) : (
+                  <span className='truncate text-sm text-text-primary'>
+                    {cat.name}
                   </span>
                 )}
+                <div className='ml-2 flex flex-shrink-0 items-center gap-2'>
+                  {editingCategory === cat._id ? (
+                    <>
+                      <button
+                        type='button'
+                        onClick={() => handleRenameCategory(cat._id)}
+                        aria-label={`Save ${cat.name}`}
+                        className='text-text-secondary hover:text-primary'
+                      >
+                        <Check size={14} />
+                      </button>
+                      <button
+                        type='button'
+                        onClick={() => setEditingCategory(null)}
+                        aria-label='Cancel edit'
+                        className='text-text-secondary hover:text-destructive'
+                      >
+                        <X size={14} />
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type='button'
+                      onClick={() => {
+                        setEditingCategory(cat._id)
+                        setEditingName(cat.name)
+                      }}
+                      aria-label={`Rename ${cat.name}`}
+                      className='text-text-secondary opacity-0 transition-opacity hover:text-primary group-hover:opacity-100'
+                    >
+                      <Pencil size={14} />
+                    </button>
+                  )}
+                  {!cat.isDefault && editingCategory !== cat._id && (
+                    <button
+                      type='button'
+                      onClick={() => handleRemoveCategory(cat._id, cat.name)}
+                      aria-label={`Remove ${cat.name}`}
+                      className='text-text-secondary opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100'
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                  {cat.isDefault && editingCategory !== cat._id && (
+                    <span className='text-tag font-bold uppercase tracking-wider text-text-secondary'>
+                      default
+                    </span>
+                  )}
+                </div>
               </li>
             ))}
           </ul>

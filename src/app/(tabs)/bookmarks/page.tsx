@@ -1,6 +1,7 @@
 'use client'
 
 import { GridIcon, ListIcon, SearchIcon } from '@/components/GeometricIcons'
+import { Button } from '@/components/ui/button'
 import {
   Select,
   SelectContent,
@@ -28,10 +29,13 @@ export default function BookmarksPage() {
   const togglePin = useMutation(api.bookmarks.togglePin)
   const toggleRead = useMutation(api.bookmarks.toggleRead)
   const remove = useMutation(api.bookmarks.remove)
+  const batchMoveCategory = useMutation(api.bookmarks.batchMoveCategory)
 
   const [search, setSearch] = useState('')
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [filterCategory, setFilterCategory] = useState<string | null>(null)
+  const [readFilter, setReadFilter] = useState<'all' | 'unread' | 'read'>('all')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
 
   const categoryCounts = useMemo(() => {
     if (!bookmarks) return new Map<string, number>()
@@ -49,17 +53,44 @@ export default function BookmarksPage() {
     if (filterCategory) {
       result = result.filter(b => (b as any).categoryId === filterCategory)
     }
+    if (readFilter === 'unread') result = result.filter(b => !b.isRead)
+    if (readFilter === 'read') result = result.filter(b => b.isRead)
     if (search) {
       const s = search.toLowerCase()
       result = result.filter(
         b =>
           (b.title ?? '').toLowerCase().includes(s) ||
           b.url.toLowerCase().includes(s) ||
-          (b.description ?? '').toLowerCase().includes(s)
+          (b.description ?? '').toLowerCase().includes(s) ||
+          ((b as any).textContent ?? '').toLowerCase().includes(s)
       )
     }
     return result.sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0))
-  }, [bookmarks, search, filterCategory])
+  }, [bookmarks, search, filterCategory, readFilter])
+
+  function toggleSelected(id: string) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function moveSelected(categoryId: string) {
+    if (!sessionToken || selected.size === 0) return
+    await batchMoveCategory({
+      sessionToken,
+      ids: Array.from(selected) as any,
+      categoryId: categoryId === 'none' ? null : (categoryId as any)
+    })
+    setSelected(new Set())
+  }
+
+  async function copySelectedUrls() {
+    const urls = items.filter(b => selected.has(b._id)).map(b => b.url)
+    await navigator.clipboard.writeText(urls.join('\n'))
+  }
 
   if (sessionLoading || !bookmarks || !categories) {
     return (
@@ -100,7 +131,7 @@ export default function BookmarksPage() {
       </div>
 
       {categories.length > 0 && (
-        <div className='mb-4'>
+        <div className='mb-4 grid gap-2 sm:grid-cols-2'>
           <Select
             value={filterCategory ?? 'all'}
             onValueChange={v => setFilterCategory(v === 'all' ? null : v)}
@@ -116,6 +147,46 @@ export default function BookmarksPage() {
                   {categoryCounts.has(cat._id)
                     ? ` (${categoryCounts.get(cat._id)})`
                     : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={readFilter}
+            onValueChange={v => setReadFilter(v as any)}
+          >
+            <SelectTrigger aria-label='Filter by read status'>
+              <SelectValue placeholder='Read status' />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value='all'>All waps</SelectItem>
+              <SelectItem value='unread'>Read later</SelectItem>
+              <SelectItem value='read'>Read</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {selected.size > 0 && (
+        <div className='mb-4 rounded-md border border-border bg-surface p-3 text-sm text-text-secondary'>
+          <div className='mb-2'>{selected.size} selected</div>
+          <Button
+            type='button'
+            onClick={copySelectedUrls}
+            variant='outline'
+            className='mb-2 w-full border-border bg-transparent text-text-primary hover:bg-background'
+          >
+            Copy share list
+          </Button>
+          <Select onValueChange={moveSelected}>
+            <SelectTrigger aria-label='Move selected to category'>
+              <SelectValue placeholder='Move to category' />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value='none'>No category</SelectItem>
+              {categories.map(cat => (
+                <SelectItem key={cat._id} value={cat._id}>
+                  {cat.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -136,8 +207,20 @@ export default function BookmarksPage() {
             <Link
               key={b._id}
               href={`/wap/${b._id}`}
-              className='waps-card overflow-hidden'
+              className='waps-card relative overflow-hidden'
             >
+              <input
+                type='checkbox'
+                checked={selected.has(b._id)}
+                onChange={() => {}}
+                onClick={e => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  toggleSelected(b._id)
+                }}
+                className='absolute left-2 top-2 z-10'
+                aria-label={`Select ${b.title || b.url}`}
+              />
               {b.image && (
                 <img
                   src={b.image}
@@ -179,6 +262,19 @@ export default function BookmarksPage() {
                     </span>
                   </div>
                 )}
+                <div className='mt-2 flex flex-wrap gap-1'>
+                  {b.isPublic && (
+                    <span className='text-tag text-primary'>public</span>
+                  )}
+                  {b.isBroken && (
+                    <span className='text-tag text-destructive'>broken</span>
+                  )}
+                  {!b.isRead && (
+                    <span className='text-tag text-text-secondary'>
+                      read later
+                    </span>
+                  )}
+                </div>
               </div>
             </Link>
           ))}
@@ -191,6 +287,18 @@ export default function BookmarksPage() {
               href={`/wap/${b._id}`}
               className='waps-card flex gap-3 p-3'
             >
+              <input
+                type='checkbox'
+                checked={selected.has(b._id)}
+                onChange={() => {}}
+                onClick={e => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  toggleSelected(b._id)
+                }}
+                className='mt-2 flex-shrink-0'
+                aria-label={`Select ${b.title || b.url}`}
+              />
               {b.favicon && (
                 <img
                   src={b.favicon}
@@ -216,6 +324,19 @@ export default function BookmarksPage() {
                     </span>
                   </div>
                 )}
+                <div className='mt-1 flex flex-wrap gap-2'>
+                  {b.isPublic && (
+                    <span className='text-tag text-primary'>public</span>
+                  )}
+                  {b.isBroken && (
+                    <span className='text-tag text-destructive'>broken</span>
+                  )}
+                  {!b.isRead && (
+                    <span className='text-tag text-text-secondary'>
+                      read later
+                    </span>
+                  )}
+                </div>
               </div>
             </Link>
           ))}

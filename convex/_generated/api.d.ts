@@ -13,12 +13,10 @@ import type * as auth from '../auth.js'
 import type * as authManual from '../authManual.js'
 import type * as bookmarks from '../bookmarks.js'
 import type * as categories from '../categories.js'
-import type * as collections from '../collections.js'
 import type * as crons from '../crons.js'
 import type * as hash from '../hash.js'
 import type * as http from '../http.js'
 import type * as metadata from '../metadata.js'
-import type * as migrate from '../migrate.js'
 import type * as pairing from '../pairing.js'
 import type * as users from '../users.js'
 
@@ -34,12 +32,10 @@ declare const fullApi: ApiFromModules<{
   authManual: typeof authManual
   bookmarks: typeof bookmarks
   categories: typeof categories
-  collections: typeof collections
   crons: typeof crons
   hash: typeof hash
   http: typeof http
   metadata: typeof metadata
-  migrate: typeof migrate
   pairing: typeof pairing
   users: typeof users
 }>

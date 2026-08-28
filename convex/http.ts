@@ -47,7 +47,9 @@ http.route({
         headers: { 'Content-Type': 'application/json' }
       })
     } catch (e: any) {
-      return new Response(JSON.stringify({ error: e.message }), {
+      const message = String(e.message ?? '')
+      const [error, id] = message.split(':')
+      return new Response(JSON.stringify({ error, id }), {
         status: 409,
         headers: { 'Content-Type': 'application/json' }
       })
@@ -224,7 +226,9 @@ http.route({
         headers: { 'Content-Type': 'application/json' }
       })
     } catch (e: any) {
-      return new Response(JSON.stringify({ error: e.message }), {
+      const message = String(e.message ?? '')
+      const [error, id] = message.split(':')
+      return new Response(JSON.stringify({ error, id }), {
         status: 409,
         headers: { 'Content-Type': 'application/json' }
       })

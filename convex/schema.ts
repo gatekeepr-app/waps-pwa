@@ -7,6 +7,7 @@ const schema = defineSchema({
   bookmarks: defineTable({
     userId: v.id('users'),
     url: v.string(),
+    sourceBookmarkId: v.optional(v.id('bookmarks')),
     title: v.optional(v.string()),
     description: v.optional(v.string()),
     favicon: v.optional(v.string()),
@@ -23,7 +24,8 @@ const schema = defineSchema({
     screenshotUrl: v.optional(v.string()),
     isPublic: v.optional(v.boolean()),
     isTrashed: v.optional(v.boolean()),
-    trashedAt: v.optional(v.number())
+    trashedAt: v.optional(v.number()),
+    removalReason: v.optional(v.string())
   })
     .index('by_user', ['userId'])
     .index('by_user_url', ['userId', 'url'])

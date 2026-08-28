@@ -9,12 +9,30 @@ import {
   ShareIcon
 } from '@/components/GeometricIcons'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select'
 import { useSession } from '@/lib/use-session'
 import { useMutation, useQuery } from 'convex/react'
 import { Check, Globe, Heart } from 'lucide-react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 
@@ -30,13 +48,23 @@ export default function WapDetailPage() {
   )
   const togglePublic = useMutation(api.bookmarks.togglePublic)
   const remove = useMutation(api.bookmarks.remove)
+  const restore = useMutation(api.bookmarks.restore)
+  const update = useMutation(api.bookmarks.update)
+  const refreshMetadata = useMutation(api.bookmarks.refreshMetadata)
   const generateShareLink = useMutation(api.bookmarks.generateShareLink)
   const addTag = useMutation(api.bookmarks.addTag)
   const removeTag = useMutation(api.bookmarks.removeTag)
 
+  const categories = useQuery(
+    api.categories.list,
+    sessionToken ? { sessionToken: sessionToken ?? undefined } : 'skip'
+  )
+
   const [newTag, setNewTag] = useState('')
   const [shareId, setShareId] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleteReason, setDeleteReason] = useState('not_useful')
 
   if (sessionLoading || !bookmark) {
     return <DetailSkeleton />
@@ -60,9 +88,37 @@ export default function WapDetailPage() {
   }
 
   async function handleDelete() {
-    if (!confirm('Move to trash?')) return
-    await remove({ id: b._id, sessionToken: sessionToken ?? undefined })
+    const result = await remove({
+      id: b._id,
+      sessionToken: sessionToken ?? undefined,
+      reason: deleteReason
+    })
+    if (!(result as any)?.deleted) {
+      toast('Wap moved to trash', {
+        action: {
+          label: 'Undo',
+          onClick: () =>
+            restore({ id: b._id, sessionToken: sessionToken ?? undefined })
+        }
+      })
+    }
     router.push('/bookmarks')
+  }
+
+  async function handleCategoryChange(value: string) {
+    await update({
+      id: b._id,
+      sessionToken: sessionToken ?? undefined,
+      categoryId: value === 'none' ? null : (value as any)
+    })
+  }
+
+  async function handleRefreshMetadata() {
+    await refreshMetadata({
+      id: b._id,
+      sessionToken: sessionToken ?? undefined
+    })
+    toast.success('Checking again')
   }
 
   async function handleAddTag(e: React.FormEvent) {
@@ -139,6 +195,42 @@ export default function WapDetailPage() {
         <p className='mb-4 text-sm text-text-secondary'>{b.description}</p>
       )}
 
+      {categories && categories.length > 0 && (
+        <div className='mb-4'>
+          <Select
+            value={b.categoryId ?? 'none'}
+            onValueChange={handleCategoryChange}
+          >
+            <SelectTrigger aria-label='Change category'>
+              <SelectValue placeholder='No category' />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value='none'>No category</SelectItem>
+              {categories.map(cat => (
+                <SelectItem key={cat._id} value={cat._id}>
+                  {cat.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {b.isBroken && (
+        <Alert className='mb-4' variant='destructive'>
+          <AlertDescription>
+            This link may be broken.{' '}
+            <button
+              type='button'
+              onClick={handleRefreshMetadata}
+              className='font-bold underline underline-offset-2'
+            >
+              Check again
+            </button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className='waps-card mb-4 flex items-start justify-between px-3 py-4 sm:px-7'>
         <DetailAction
           href={b.url}
@@ -164,7 +256,7 @@ export default function WapDetailPage() {
           tone={b.isPublic ? 'active' : 'default'}
         />
         <DetailAction
-          onClick={handleDelete}
+          onClick={() => setDeleteOpen(true)}
           icon={<DeleteIcon size={16} />}
           label='Trash'
           tone='danger'
@@ -238,6 +330,46 @@ export default function WapDetailPage() {
       )}
 
       <Recommendations b={b} sessionToken={sessionToken} />
+
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent className='border-border bg-background text-text-primary'>
+          <DialogHeader>
+            <DialogTitle>Why remove this wap?</DialogTitle>
+            <DialogDescription>
+              This helps keep cleanup behavior understandable later.
+            </DialogDescription>
+          </DialogHeader>
+          <RadioGroup value={deleteReason} onValueChange={setDeleteReason}>
+            {[
+              ['not_useful', 'Not useful anymore'],
+              ['saved_by_mistake', 'Saved by mistake'],
+              ['duplicate', 'Duplicate or wrong link'],
+              ['privacy', 'Privacy cleanup']
+            ].map(([value, label]) => (
+              <label
+                key={value}
+                className='flex items-center gap-2 text-sm text-text-secondary'
+              >
+                <RadioGroupItem value={value} />
+                {label}
+              </label>
+            ))}
+          </RadioGroup>
+          <DialogFooter className='gap-2 sm:space-x-0'>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => setDeleteOpen(false)}
+              className='flex-1 border-border bg-transparent text-text-primary hover:bg-surface'
+            >
+              Cancel
+            </Button>
+            <Button type='button' onClick={handleDelete} className='flex-1'>
+              Remove
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

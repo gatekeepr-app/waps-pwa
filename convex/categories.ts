@@ -112,3 +112,28 @@ export const remove = mutation({
     return { ok: true }
   }
 })
+
+export const rename = mutation({
+  args: {
+    sessionToken: v.optional(v.string()),
+    id: v.id('categories'),
+    name: v.string()
+  },
+  handler: async (ctx, args) => {
+    const userId = await resolveUserId(ctx, args.sessionToken)
+    if (!userId) throw new Error('Not authenticated')
+    const name = args.name.trim()
+    if (!name) throw new Error('Category name required')
+    const doc = await ctx.db.get(args.id)
+    if (!doc || doc.userId !== userId) throw new Error('Not found')
+    const existing = await ctx.db
+      .query('categories')
+      .withIndex('by_user', q => q.eq('userId', userId))
+      .filter(q => q.eq(q.field('name'), name))
+      .first()
+    if (existing && existing._id !== args.id)
+      throw new Error('Category already exists')
+    await ctx.db.patch(args.id, { name })
+    return { ok: true }
+  }
+})

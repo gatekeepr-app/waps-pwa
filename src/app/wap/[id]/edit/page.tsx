@@ -142,10 +142,14 @@ export default function EditWapPage() {
         id: id as Id<'bookmarks'>,
         title: title.trim() || undefined,
         description: description.trim() || undefined,
-        categoryId: (categoryId as any) || undefined
+        categoryId: categoryId ? (categoryId as any) : null
       })
       if (tags.join('\u0000') !== initial.tags.join('\u0000')) {
-        await setTags({ bookmarkId: id as Id<'bookmarks'>, tags })
+        await setTags({
+          bookmarkId: id as Id<'bookmarks'>,
+          tags,
+          sessionToken: sessionToken ?? undefined
+        })
       }
       if (isPinned !== initial.isPinned) {
         await togglePin({

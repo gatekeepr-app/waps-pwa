@@ -1,0 +1,172 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  width: 360px;
+  margin: 0;
+  background: #000;
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+main {
+  padding: 16px;
+}
+
+h1 {
+  margin: 0 0 12px;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 14px;
+}
+
+.tab {
+  flex: 1;
+  height: 34px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #555;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tab.active {
+  background: #fff;
+  color: #000;
+}
+
+.field {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.field > span {
+  display: block;
+  margin-bottom: 4px;
+  color: #555;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+input {
+  width: 100%;
+  height: 40px;
+  border: 1px solid #1a1a1a;
+  border-radius: 6px;
+  outline: none;
+  background: #111;
+  color: #fff;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+input:focus {
+  border-color: #fff;
+}
+
+.code {
+  text-align: center;
+  font-size: 18px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+button,
+.linkButton {
+  display: flex;
+  width: 100%;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: #fff;
+  color: #000;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.secondary {
+  border: 1px solid #1a1a1a;
+  background: transparent;
+  color: #555;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid #1a1a1a;
+  border-radius: 8px;
+  background: #111;
+}
+
+.toggle strong,
+.toggle small {
+  display: block;
+}
+
+.toggle strong {
+  font-size: 13px;
+}
+
+.toggle small,
+.hint {
+  color: #555;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: #f97316;
+}
+
+.hint {
+  margin: 0 0 12px;
+}
+
+.status {
+  margin-top: 10px;
+  color: #555;
+  text-align: center;
+  font-size: 12px;
+}
+
+.status p {
+  margin: 4px 0 0;
+}
+
+.status.success {
+  color: #4ade80;
+}
+
+.status.error {
+  color: #ef4444;
+}

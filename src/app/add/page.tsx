@@ -9,6 +9,7 @@ import {
 import { TagEditor } from '@/components/TagEditor'
 import { ToggleSwitch } from '@/components/ToggleSwitch'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import {
   Select,
   SelectContent,
@@ -52,6 +53,8 @@ export default function AddPage() {
   const [categoryTouched, setCategoryTouched] = useState(false)
   const [makePublic, setMakePublic] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [saveStep, setSaveStep] = useState('')
+  const [clipboardUrl, setClipboardUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const categories = useQuery(
@@ -70,15 +73,37 @@ export default function AddPage() {
   }, [sessionToken])
 
   useEffect(() => {
+    const draft = localStorage.getItem('waps:add-draft')
+    if (draft) {
+      try {
+        const d = JSON.parse(draft)
+        setUrl(d.url ?? '')
+        setTitle(d.title ?? '')
+        setDescription(d.description ?? '')
+        setTagsState(d.tags ?? [])
+        setCategoryId(d.categoryId ?? '')
+      } catch {}
+    }
     navigator.clipboard
       .readText()
       .then(text => {
         if (text && /^https?:\/\//i.test(text.trim())) {
-          setUrl(text.trim())
+          setClipboardUrl(text.trim())
         }
       })
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!url && !title && !description && tags.length === 0 && !categoryId) {
+      localStorage.removeItem('waps:add-draft')
+      return
+    }
+    localStorage.setItem(
+      'waps:add-draft',
+      JSON.stringify({ url, title, description, tags, categoryId })
+    )
+  }, [categoryId, description, tags, title, url])
 
   const normalized = normalizeUrlInput(url)
   const debouncedUrl = useDebounced(normalized ?? '', 500)
@@ -134,6 +159,7 @@ export default function AddPage() {
     }
 
     setBusy(true)
+    setSaveStep('Saving link...')
     try {
       const newId = await addBookmark({
         sessionToken: sessionToken ?? undefined,
@@ -144,12 +170,20 @@ export default function AddPage() {
         isPublic: makePublic || undefined
       })
       if (tags.length > 0) {
-        await setTags({ bookmarkId: newId, tags })
+        setSaveStep('Saving tags...')
+        await setTags({
+          bookmarkId: newId,
+          tags,
+          sessionToken: sessionToken ?? undefined
+        })
       }
+      setSaveStep('Fetching metadata...')
+      localStorage.removeItem('waps:add-draft')
       router.push(`/wap/${newId}`)
     } catch (err: any) {
       setError(err?.message || 'Failed to add bookmark.')
       setBusy(false)
+      setSaveStep('')
     }
   }, [
     addBookmark,
@@ -217,6 +251,23 @@ export default function AddPage() {
         >
           {/* Link */}
           <section className='waps-card p-5 sm:p-6'>
+            {!url && clipboardUrl && (
+              <div className='mb-4 rounded-md border border-border bg-surface p-3 text-sm text-text-secondary'>
+                <div className='mb-2 truncate'>
+                  Use copied link? {clipboardUrl}
+                </div>
+                <Button
+                  type='button'
+                  onClick={() => {
+                    setUrl(clipboardUrl)
+                    setClipboardUrl(null)
+                  }}
+                  size='sm'
+                >
+                  Use clipboard link
+                </Button>
+              </div>
+            )}
             <label htmlFor='add-url' className='waps-label mb-2 block'>
               Link
             </label>
@@ -276,12 +327,21 @@ export default function AddPage() {
                 <AlertDescription>
                   You have this wap in your collection.{' '}
                   {duplicate.bookmarkId && (
-                    <Link
-                      href={`/wap/${duplicate.bookmarkId}`}
-                      className='font-bold underline underline-offset-2'
-                    >
-                      View it
-                    </Link>
+                    <>
+                      <Link
+                        href={`/wap/${duplicate.bookmarkId}`}
+                        className='font-bold underline underline-offset-2'
+                      >
+                        View it
+                      </Link>{' '}
+                      or{' '}
+                      <Link
+                        href={`/wap/${duplicate.bookmarkId}/edit`}
+                        className='font-bold underline underline-offset-2'
+                      >
+                        edit it
+                      </Link>
+                    </>
                   )}
                 </AlertDescription>
               </Alert>
@@ -432,6 +492,12 @@ export default function AddPage() {
             <Alert variant='destructive' role='alert' className='mt-4'>
               <AlertDescription>{error}</AlertDescription>
             </Alert>
+          )}
+
+          {saveStep && (
+            <p className='mt-4 text-center text-sm text-text-secondary'>
+              {saveStep}
+            </p>
           )}
 
           <p className='mt-4 hidden items-center justify-center gap-1.5 text-tag font-bold uppercase tracking-wider text-text-secondary sm:flex'>
