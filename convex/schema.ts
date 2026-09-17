@@ -54,6 +54,7 @@ const schema = defineSchema({
     code: v.string(),
     apiKey: v.string(),
     convexUrl: v.string(),
+    username: v.optional(v.string()),
     createdAt: v.number()
   }).index('by_code', ['code']),
   pairingAttempts: defineTable({

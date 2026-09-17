@@ -129,7 +129,7 @@ convex/
 ├── authManual.ts          # Custom auth mutations
 └── schema.ts              # Database schema
 
-apps/extension/            # WXT + React browser extension (MV3)
+browser-extension/         # WXT + React browser extension (MV3)
 ```
 
 ## Scripts

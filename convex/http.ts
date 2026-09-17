@@ -15,6 +15,13 @@ http.route({
     const apiKey = body?.apiKey
     const url = body?.url
     const title = body?.title
+    const categoryId = body?.categoryId || undefined
+    const tags = Array.isArray(body?.tags)
+      ? body.tags
+          .map((tag: unknown) => String(tag).trim().toLowerCase())
+          .filter(Boolean)
+      : undefined
+    const isPublic = body?.isPublic === true
 
     if (!apiKey || !url) {
       return new Response(
@@ -40,7 +47,10 @@ http.route({
       const id = await ctx.runMutation(api.bookmarks.addByHttp, {
         userId: keyDoc.userId,
         url,
-        title: title || undefined
+        title: title || undefined,
+        categoryId,
+        tags,
+        isPublic
       })
       return new Response(JSON.stringify({ id, url }), {
         status: 200,
@@ -54,6 +64,37 @@ http.route({
         headers: { 'Content-Type': 'application/json' }
       })
     }
+  })
+})
+
+http.route({
+  path: '/api/extension/options',
+  method: 'GET',
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url)
+    const apiKey = url.searchParams.get('key')
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: 'key required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+    const keyDoc = await ctx.runQuery(api.apiKeys.validateApiKey, {
+      key: apiKey
+    })
+    if (!keyDoc) {
+      return new Response(JSON.stringify({ error: 'Invalid api key' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+    const categories = await ctx.runQuery(api.categories.listByApiKey, {
+      apiKey
+    })
+    return new Response(JSON.stringify({ categories }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    })
   })
 })
 

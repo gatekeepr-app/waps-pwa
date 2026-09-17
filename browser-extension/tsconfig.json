@@ -5,7 +5,7 @@
     "types": ["chrome"],
     "baseUrl": ".",
     "paths": {
-      "shared/*": ["../../shared/*"]
+      "shared/*": ["../shared/*"]
     }
   }
 }

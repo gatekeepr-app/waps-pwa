@@ -18,12 +18,12 @@ import {
 } from '@/components/ui/select'
 import { useSession } from '@/lib/use-session'
 import { useMutation, useQuery } from 'convex/react'
-import { Check, Globe, Heart } from 'lucide-react'
+import { BookOpen, Check, Globe, Heart } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
@@ -48,6 +48,7 @@ export default function WapDetailPage() {
   const generateShareLink = useMutation(api.bookmarks.generateShareLink)
   const addTag = useMutation(api.bookmarks.addTag)
   const removeTag = useMutation(api.bookmarks.removeTag)
+  const setReminder = useMutation(api.bookmarks.setReminder)
 
   const categories = useQuery(
     api.categories.list,
@@ -58,6 +59,14 @@ export default function WapDetailPage() {
   const [shareId, setShareId] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [reminderValue, setReminderValue] = useState('')
+
+  useEffect(() => {
+    if (!(bookmark as any)?.remindAt) return
+    setReminderValue(
+      new Date((bookmark as any).remindAt).toISOString().slice(0, 16)
+    )
+  }, [bookmark])
 
   if (sessionLoading || !bookmark) {
     return <DetailSkeleton />
@@ -135,6 +144,15 @@ export default function WapDetailPage() {
         sessionToken: sessionToken ?? undefined
       })
     }
+  }
+
+  async function handleReminder() {
+    await setReminder({
+      id: b._id,
+      remindAt: reminderValue ? new Date(reminderValue).getTime() : undefined,
+      sessionToken: sessionToken ?? undefined
+    })
+    toast.success(reminderValue ? 'Reminder saved' : 'Reminder cleared')
   }
 
   return (
@@ -242,6 +260,11 @@ export default function WapDetailPage() {
           label='Edit'
         />
         <DetailAction
+          href={`/reader/${b._id}`}
+          icon={<BookOpen size={16} />}
+          label='Reader'
+        />
+        <DetailAction
           onClick={handleShare}
           icon={copied ? <Check size={16} /> : <ShareIcon size={16} />}
           label={copied ? 'Copied' : 'Share'}
@@ -269,6 +292,40 @@ export default function WapDetailPage() {
           </AlertDescription>
         </Alert>
       )}
+
+      <div className='waps-card mb-4 p-4'>
+        <div className='waps-label mb-2'>Reminder</div>
+        <div className='flex gap-2'>
+          <input
+            type='datetime-local'
+            value={reminderValue}
+            onChange={e => setReminderValue(e.target.value)}
+            className='waps-input min-w-0 flex-1'
+          />
+          <button
+            type='button'
+            className='waps-btn px-3'
+            onClick={handleReminder}
+          >
+            Save
+          </button>
+        </div>
+        {reminderValue && (
+          <button
+            type='button'
+            className='mt-2 text-xs text-text-secondary underline'
+            onClick={() => {
+              setReminderValue('')
+              setReminder({
+                id: b._id,
+                sessionToken: sessionToken ?? undefined
+              })
+            }}
+          >
+            Clear reminder
+          </button>
+        )}
+      </div>
 
       {shareId && (
         <div className='waps-card mb-4 p-3'>
@@ -412,7 +469,7 @@ function DetailSkeleton() {
         </div>
       </div>
       <div className='waps-card mb-4 flex items-start justify-between px-3 py-4 sm:px-7'>
-        {[0, 1, 2, 3, 4].map(i => (
+        {[0, 1, 2, 3, 4, 5].map(i => (
           <div key={i} className='flex w-16 flex-col items-center gap-1.5'>
             <div className='h-10 w-10 animate-pulse rounded-full bg-surface' />
             <div className='h-2.5 w-12 animate-pulse rounded bg-surface' />

@@ -442,6 +442,26 @@ export const listPublic = query({
   }
 })
 
+export const listPublicByUser = query({
+  args: { userId: v.id('users') },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId)
+    if (!user) return null
+    const all = await ctx.db
+      .query('bookmarks')
+      .withIndex('by_user', (q: any) => q.eq('userId', args.userId))
+      .collect()
+    return {
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email
+      },
+      bookmarks: all.filter((b: any) => b.isPublic).map(publicView)
+    }
+  }
+})
+
 export const addTag = mutation({
   args: {
     id: v.id('bookmarks'),
@@ -917,7 +937,10 @@ export const addByHttp = mutation({
   args: {
     userId: v.id('users'),
     url: v.string(),
-    title: v.optional(v.string())
+    title: v.optional(v.string()),
+    categoryId: v.optional(v.id('categories')),
+    tags: v.optional(v.array(v.string())),
+    isPublic: v.optional(v.boolean())
   },
   handler: async (ctx, args) => {
     const url = normalizeUrlInput(args.url)
@@ -931,9 +954,12 @@ export const addByHttp = mutation({
       url,
       sourceBookmarkId: source?._id,
       title: args.title ?? source?.title,
+      categoryId: args.categoryId,
+      tags: args.tags,
       favicon: source?.favicon,
       image: source?.image,
-      isBroken: source?.isBroken
+      isBroken: source?.isBroken,
+      isPublic: args.isPublic
     })
     if (!source) {
       await ctx.scheduler.runAfter(

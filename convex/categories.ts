@@ -1,6 +1,7 @@
 import { getAuthUserId } from '@convex-dev/auth/server'
 import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
+import { sha256Hex } from './hash'
 
 async function resolveUserId(ctx: any, sessionToken?: string) {
   let userId = await getAuthUserId(ctx)
@@ -70,6 +71,23 @@ export const list = query({
     return await ctx.db
       .query('categories')
       .withIndex('by_user', q => q.eq('userId', userId))
+      .order('asc')
+      .collect()
+  }
+})
+
+export const listByApiKey = query({
+  args: { apiKey: v.string() },
+  handler: async (ctx, args) => {
+    const keyHash = await sha256Hex(args.apiKey)
+    const keyDoc = await ctx.db
+      .query('apiKeys')
+      .withIndex('by_key', q => q.eq('key', keyHash))
+      .first()
+    if (!keyDoc) return []
+    return await ctx.db
+      .query('categories')
+      .withIndex('by_user', q => q.eq('userId', keyDoc.userId))
       .order('asc')
       .collect()
   }

@@ -89,6 +89,12 @@ export default function ReaderPage() {
           </div>
         </div>
       )}
+      {!b.textContent && (
+        <div className='waps-card p-4 text-sm text-text-secondary'>
+          Reader text is not available yet. Try refreshing metadata from the wap
+          detail page.
+        </div>
+      )}
     </div>
   )
 }

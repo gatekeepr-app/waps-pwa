@@ -15,11 +15,19 @@ main {
 }
 
 h1 {
-  margin: 0 0 12px;
+  margin: 0;
   color: #fff;
   font-size: 15px;
   font-weight: 700;
   letter-spacing: -0.02em;
+}
+
+.saveHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
 .tabs {
@@ -62,7 +70,8 @@ h1 {
   text-transform: uppercase;
 }
 
-input {
+input,
+select {
   width: 100%;
   height: 40px;
   border: 1px solid #1a1a1a;
@@ -74,7 +83,8 @@ input {
   font-size: 13px;
 }
 
-input:focus {
+input:focus,
+select:focus {
   border-color: #fff;
 }
 
@@ -103,6 +113,34 @@ button,
   text-decoration: none;
 }
 
+.saveButton {
+  background: #f97316;
+  color: #fff;
+}
+
+.profileLink {
+  height: auto;
+  margin-top: 8px;
+  background: transparent;
+  color: #555;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.openExisting {
+  display: block;
+  margin-top: 10px;
+  color: #f97316;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 button:disabled {
   cursor: default;
   opacity: 0.4;
@@ -114,13 +152,36 @@ button:disabled {
   color: #555;
 }
 
+.connected {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin: 18px 0 10px;
+  padding: 18px 12px;
+  border: 1px solid #1a1a1a;
+  border-radius: 8px;
+  background: #111;
+  text-align: center;
+}
+
+.connected strong {
+  color: #4ade80;
+  font-size: 18px;
+}
+
+.connected span {
+  color: #fff;
+  font-size: 13px;
+}
+
 .toggle {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin: 12px 0;
-  padding: 12px;
+  margin: 8px 0 12px;
+  padding: 9px 10px;
   border: 1px solid #1a1a1a;
   border-radius: 8px;
   background: #111;
@@ -132,7 +193,68 @@ button:disabled {
 }
 
 .toggle strong {
-  font-size: 13px;
+  font-size: 12px;
+}
+
+.inlineToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #555;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.switch {
+  position: relative;
+  display: inline-flex;
+  width: 42px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.switch input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.switch > span {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: #262626;
+  transition: background 0.18s ease;
+}
+
+.switch > span::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #fff;
+  content: '';
+  transition: transform 0.18s ease;
+}
+
+.switch input:checked + span {
+  background: #f97316;
+}
+
+.switch input:checked + span::after {
+  transform: translateX(18px);
+}
+
+.switch input:focus-visible + span {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
 }
 
 .toggle small,
@@ -140,12 +262,6 @@ button:disabled {
   color: #555;
   font-size: 11px;
   line-height: 1.45;
-}
-
-.toggle input {
-  width: 18px;
-  height: 18px;
-  accent-color: #f97316;
 }
 
 .hint {

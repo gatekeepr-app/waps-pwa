@@ -5,13 +5,15 @@ import { signOut } from '@/lib/auth-api'
 import { useSession } from '@/lib/use-session'
 import { useMutation, useQuery } from 'convex/react'
 import { Check, Pencil, Plus, Trash2, X } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { api } from '../../../../convex/_generated/api'
 
 export default function ProfilePage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { user, sessionToken, loading: sessionLoading } = useSession()
   const [pairingCode, setPairingCode] = useState<string | null>(null)
   const [pairingBusy, setPairingBusy] = useState(false)
@@ -34,6 +36,8 @@ export default function ProfilePage() {
     sessionToken ? { sessionToken } : 'skip'
   )
   const publicWaps = (bookmarks ?? []).filter(b => b.isPublic)
+  const autoPairStarted = useRef(false)
+  const username = user?.name || user?.email?.split('@')[0] || 'user'
 
   async function handleSignOut() {
     try {
@@ -43,18 +47,40 @@ export default function ProfilePage() {
     router.push('/login')
   }
 
-  async function handleGeneratePairing() {
-    if (!sessionToken) return
-    setPairingBusy(true)
-    try {
-      const result = await generateCode({ sessionToken })
-      setPairingCode(result.code)
-    } catch (e: any) {
-      toast.error(e?.message || 'Failed to generate code')
-    } finally {
-      setPairingBusy(false)
+  const handleGeneratePairing = useCallback(
+    async (writeToUrl = false) => {
+      if (!sessionToken) return
+      setPairingBusy(true)
+      try {
+        const result = await generateCode({ sessionToken })
+        setPairingCode(result.code)
+        if (writeToUrl) {
+          const params = new URLSearchParams({
+            wapsPairCode: result.code,
+            username
+          })
+          window.history.replaceState(null, '', `/profile#${params}`)
+        }
+      } catch (e: any) {
+        toast.error(e?.message || 'Failed to generate code')
+      } finally {
+        setPairingBusy(false)
+      }
+    },
+    [generateCode, sessionToken, username]
+  )
+
+  useEffect(() => {
+    if (
+      autoPairStarted.current ||
+      searchParams.get('pairExtension') !== '1' ||
+      !sessionToken
+    ) {
+      return
     }
-  }
+    autoPairStarted.current = true
+    handleGeneratePairing(true)
+  }, [handleGeneratePairing, searchParams, sessionToken])
 
   async function handleAddCategory(e: React.FormEvent) {
     e.preventDefault()
@@ -144,6 +170,23 @@ export default function ProfilePage() {
             categories
           </div>
         </div>
+        {user?.id && (
+          <Link
+            href={`/u/${user.id}`}
+            className='mt-4 block text-sm text-primary underline underline-offset-2'
+          >
+            View public profile
+          </Link>
+        )}
+      </div>
+
+      <div className='mb-4 grid grid-cols-2 gap-2'>
+        <Link href='/import' className='waps-btn-outline text-center'>
+          Import bookmarks
+        </Link>
+        <Link href='/trash' className='waps-btn-outline text-center'>
+          Trash
+        </Link>
       </div>
 
       <div className='waps-card mb-4 p-6'>
@@ -304,7 +347,7 @@ export default function ProfilePage() {
           </div>
         ) : (
           <button
-            onClick={handleGeneratePairing}
+            onClick={() => handleGeneratePairing()}
             disabled={pairingBusy}
             className='waps-btn w-full'
           >

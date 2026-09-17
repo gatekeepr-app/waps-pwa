@@ -42,14 +42,13 @@ export default function LoginPage() {
         signinResult = await signIn(email, password)
       } else {
         await signUp(name.trim(), email, password)
-        signinResult = await signIn(email, password)
       }
 
       const meNow = await fetchMe()
       if (meNow.user)
         localStorage.setItem('waps:user', JSON.stringify(meNow.user))
 
-      router.push('/bookmarks')
+      router.push(tab === 'signup' ? '/onboarding/categories' : '/bookmarks')
     } catch (err: any) {
       setError(err?.message || 'Something went wrong.')
     } finally {

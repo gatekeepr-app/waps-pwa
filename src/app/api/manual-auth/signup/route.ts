@@ -37,10 +37,6 @@ export async function POST(req: Request) {
       expiresAt
     })
 
-    await client().mutation(api.categories.ensureDefaults, {
-      sessionToken: token
-    })
-
     const res = NextResponse.json({ ok: true, userId })
     res.cookies.set('waps_session', token, {
       httpOnly: true,

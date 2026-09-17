@@ -70,20 +70,9 @@ export default function AddPage() {
   useEffect(() => {
     if (sessionToken)
       ensureCategories({ sessionToken: sessionToken ?? undefined })
-  }, [sessionToken])
+  }, [ensureCategories, sessionToken])
 
   useEffect(() => {
-    const draft = localStorage.getItem('waps:add-draft')
-    if (draft) {
-      try {
-        const d = JSON.parse(draft)
-        setUrl(d.url ?? '')
-        setTitle(d.title ?? '')
-        setDescription(d.description ?? '')
-        setTagsState(d.tags ?? [])
-        setCategoryId(d.categoryId ?? '')
-      } catch {}
-    }
     navigator.clipboard
       .readText()
       .then(text => {
@@ -93,17 +82,6 @@ export default function AddPage() {
       })
       .catch(() => {})
   }, [])
-
-  useEffect(() => {
-    if (!url && !title && !description && tags.length === 0 && !categoryId) {
-      localStorage.removeItem('waps:add-draft')
-      return
-    }
-    localStorage.setItem(
-      'waps:add-draft',
-      JSON.stringify({ url, title, description, tags, categoryId })
-    )
-  }, [categoryId, description, tags, title, url])
 
   const normalized = normalizeUrlInput(url)
   const debouncedUrl = useDebounced(normalized ?? '', 500)
@@ -178,7 +156,6 @@ export default function AddPage() {
         })
       }
       setSaveStep('Fetching metadata...')
-      localStorage.removeItem('waps:add-draft')
       router.push(`/wap/${newId}`)
     } catch (err: any) {
       setError(err?.message || 'Failed to add bookmark.')
@@ -282,6 +259,11 @@ export default function AddPage() {
                 autoComplete='off'
                 value={url}
                 onChange={e => setUrl(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey) {
+                    e.preventDefault()
+                  }
+                }}
                 placeholder='https://example.com/article'
                 className='waps-input w-full py-3 pl-9 pr-20 text-sm'
                 autoFocus

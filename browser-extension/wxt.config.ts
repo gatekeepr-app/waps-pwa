@@ -6,7 +6,7 @@ export default defineConfig({
     name: 'Waps',
     version: '1.0.0',
     description: 'Save bookmarks to your Waps account',
-    permissions: ['storage', 'activeTab', 'scripting'],
+    permissions: ['storage', 'activeTab', 'scripting', 'tabs', 'contextMenus'],
     host_permissions: ['https://*.convex.cloud/*', 'https://*.convex.site/*'],
     action: {
       default_icon: {

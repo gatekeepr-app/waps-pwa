@@ -13,15 +13,18 @@ import { useSession } from '@/lib/use-session'
 import { useMutation, useQuery } from 'convex/react'
 import Image from 'next/image'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { api } from '../../../../convex/_generated/api'
 
 export default function BookmarksPage() {
   const { sessionToken, loading: sessionLoading } = useSession()
+  const searchParams = useSearchParams()
+  const activeTag = searchParams.get('tag') || undefined
 
   const bookmarks = useQuery(
     api.bookmarks.list,
-    sessionToken ? { sessionToken } : 'skip'
+    sessionToken ? { sessionToken, tag: activeTag } : 'skip'
   )
   const categories = useQuery(
     api.categories.list,
@@ -107,6 +110,16 @@ export default function BookmarksPage() {
         <h1 className='text-heading font-bold text-text-primary'>My Waps</h1>
         <span className='text-sm text-text-secondary'>({items.length})</span>
       </div>
+      {activeTag && (
+        <div className='mb-3 flex items-center justify-between rounded-md border border-border bg-surface px-3 py-2 text-sm text-text-secondary'>
+          <span>
+            Tag: <span className='text-primary'>#{activeTag}</span>
+          </span>
+          <Link href='/bookmarks' className='text-primary underline'>
+            Clear
+          </Link>
+        </div>
+      )}
 
       <div className='mb-3 flex gap-2'>
         <div className='relative flex-1'>

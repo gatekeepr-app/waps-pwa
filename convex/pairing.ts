@@ -1,4 +1,5 @@
 import { v } from 'convex/values'
+import type { Id } from './_generated/dataModel'
 import { mutation } from './_generated/server'
 import { sha256Hex } from './hash'
 
@@ -17,7 +18,7 @@ const RATE_MAX_ATTEMPTS = 10
 export const generatePairingCode = mutation({
   args: { sessionToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    let userId: any = null
+    let userId: Id<'users'> | null = null
     const sess = args.sessionToken
       ? await ctx.db
           .query('sessions')
@@ -28,6 +29,8 @@ export const generatePairingCode = mutation({
       userId = sess.userId
     }
     if (!userId) throw new Error('Not authenticated')
+    const user = await ctx.db.get(userId)
+    const username = user?.name || user?.email?.split('@')[0] || 'user'
 
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
     let code = ''
@@ -57,9 +60,10 @@ export const generatePairingCode = mutation({
       code,
       apiKey: rawKey,
       convexUrl: siteUrl,
+      username,
       createdAt: Date.now()
     })
-    return { code, apiKey: rawKey, convexUrl: siteUrl }
+    return { code, apiKey: rawKey, convexUrl: siteUrl, username }
   }
 })
 
@@ -126,7 +130,8 @@ export const redeemPairingCode = mutation({
 
     return {
       apiKey: doc.apiKey,
-      convexUrl: doc.convexUrl
+      convexUrl: doc.convexUrl,
+      username: doc.username
     }
   }
 })
