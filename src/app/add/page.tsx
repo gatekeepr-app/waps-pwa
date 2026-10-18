@@ -8,7 +8,7 @@ import {
 } from '@/components/GeometricIcons'
 import { TagEditor } from '@/components/TagEditor'
 import { ToggleSwitch } from '@/components/ToggleSwitch'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -17,6 +17,14 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
+import {
+  createOfflineSaveRequestId,
+  enqueueOfflineSave,
+  flushOfflineSaveQueue,
+  getOfflineSaveQueue,
+  isRetryableOfflineError,
+  type OfflineSaveInput
+} from '@/lib/offline-save-queue'
 import { normalizeUrlInput } from '@/lib/url'
 import { useSession } from '@/lib/use-session'
 import { useMutation, useQuery } from 'convex/react'
@@ -43,7 +51,7 @@ export default function AddPage() {
   const setTags = useMutation(api.bookmarks.setTags)
   const ensureCategories = useMutation(api.categories.ensureDefaults)
 
-  const { sessionToken } = useSession()
+  const { sessionToken, user } = useSession()
 
   const [url, setUrl] = useState('')
   const [title, setTitle] = useState('')
@@ -54,6 +62,7 @@ export default function AddPage() {
   const [makePublic, setMakePublic] = useState(false)
   const [busy, setBusy] = useState(false)
   const [saveStep, setSaveStep] = useState('')
+  const [pendingSaves, setPendingSaves] = useState(0)
   const [clipboardUrl, setClipboardUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -66,6 +75,56 @@ export default function AddPage() {
     api.bookmarks.listAllTags,
     sessionToken ? { sessionToken: sessionToken ?? undefined } : 'skip'
   )
+
+  const refreshPendingSaves = useCallback(() => {
+    if (user?.id) setPendingSaves(getOfflineSaveQueue(user.id).length)
+    else setPendingSaves(0)
+  }, [user?.id])
+
+  const flushPendingSaves = useCallback(async () => {
+    if (!user?.id || !sessionToken) return
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return
+    const pending = getOfflineSaveQueue(user.id)
+    if (pending.length === 0) {
+      setPendingSaves(0)
+      return
+    }
+
+    setSaveStep('Syncing offline links...')
+    const result = await flushOfflineSaveQueue(user.id, sessionToken, {
+      saveBookmark: async input =>
+        addBookmark({
+          sessionToken: input.sessionToken,
+          clientRequestId: input.clientRequestId,
+          url: input.url,
+          title: input.title,
+          description: input.description,
+          categoryId: (input.categoryId as any) || undefined,
+          isPublic: input.isPublic || undefined
+        }),
+      saveTags: async (bookmarkId, queuedTags, token) => {
+        await setTags({
+          bookmarkId: bookmarkId as any,
+          tags: queuedTags,
+          sessionToken: token
+        })
+      }
+    })
+    setPendingSaves(result.remaining)
+    setSaveStep(
+      result.remaining > 0
+        ? `${result.remaining} offline link${result.remaining === 1 ? '' : 's'} still waiting to sync.`
+        : ''
+    )
+  }, [addBookmark, sessionToken, setTags, user?.id])
+
+  useEffect(() => {
+    refreshPendingSaves()
+    void flushPendingSaves()
+    const onOnline = () => void flushPendingSaves()
+    window.addEventListener('online', onOnline)
+    return () => window.removeEventListener('online', onOnline)
+  }, [flushPendingSaves, refreshPendingSaves])
 
   useEffect(() => {
     if (sessionToken)
@@ -87,19 +146,9 @@ export default function AddPage() {
   const debouncedUrl = useDebounced(normalized ?? '', 500)
   const debouncedTitle = useDebounced(title.trim(), 500)
 
-  const duplicate = useQuery(
-    api.bookmarks.checkDuplicate,
-    sessionToken && debouncedUrl
-      ? {
-          sessionToken: sessionToken ?? undefined,
-          url: debouncedUrl
-        }
-      : 'skip'
-  )
-
   const popularity = useQuery(
     api.bookmarks.linkPopularity,
-    !duplicate?.exists && debouncedUrl
+    debouncedUrl
       ? { url: debouncedUrl, sessionToken: sessionToken ?? undefined }
       : 'skip'
   )
@@ -136,14 +185,40 @@ export default function AddPage() {
       return
     }
 
+    if (!user?.id || !sessionToken) {
+      setError('Your session is still loading. Please try again.')
+      return
+    }
+
+    const queuedInput: OfflineSaveInput = {
+      clientRequestId: createOfflineSaveRequestId(),
+      url: finalUrl,
+      title: title.trim() || undefined,
+      description: description.trim() || undefined,
+      categoryId: (categoryId as any) || undefined,
+      tags: [...tags],
+      isPublic: makePublic
+    }
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      enqueueOfflineSave(user.id, queuedInput)
+      refreshPendingSaves()
+      setSaveStep(
+        'Saved offline. It will sync automatically when you reconnect.'
+      )
+      setBusy(false)
+      return
+    }
+
     setBusy(true)
     setSaveStep('Saving link...')
     try {
       const newId = await addBookmark({
         sessionToken: sessionToken ?? undefined,
+        clientRequestId: queuedInput.clientRequestId,
         url: finalUrl,
-        title: title.trim() || undefined,
-        description: description.trim() || undefined,
+        title: queuedInput.title,
+        description: queuedInput.description,
         categoryId: (categoryId as any) || undefined,
         isPublic: makePublic || undefined
       })
@@ -158,6 +233,16 @@ export default function AddPage() {
       setSaveStep('Fetching metadata...')
       router.push(`/wap/${newId}`)
     } catch (err: any) {
+      if (isRetryableOfflineError(err)) {
+        enqueueOfflineSave(user.id, queuedInput)
+        refreshPendingSaves()
+        setError(null)
+        setSaveStep(
+          'Saved locally. It will sync automatically when the connection returns.'
+        )
+        setBusy(false)
+        return
+      }
       setError(err?.message || 'Failed to add bookmark.')
       setBusy(false)
       setSaveStep('')
@@ -168,11 +253,13 @@ export default function AddPage() {
     description,
     makePublic,
     router,
+    refreshPendingSaves,
     sessionToken,
     setTags,
     tags,
     title,
-    url
+    url,
+    user?.id
   ])
 
   useEffect(() => {
@@ -186,7 +273,7 @@ export default function AddPage() {
     return () => window.removeEventListener('keydown', onKey)
   }, [save])
 
-  const canSave = !!normalized && !busy && !duplicate?.exists
+  const canSave = !!normalized && !busy
 
   return (
     <div className='flex min-h-dvh flex-col bg-background'>
@@ -303,58 +390,30 @@ export default function AddPage() {
                 </p>
               ))}
 
-            {duplicate?.exists && (
-              <Alert variant='destructive' role='alert' className='mt-4'>
-                <AlertTitle>Already saved</AlertTitle>
-                <AlertDescription>
-                  You have this wap in your collection.{' '}
-                  {duplicate.bookmarkId && (
-                    <>
-                      <Link
-                        href={`/wap/${duplicate.bookmarkId}`}
-                        className='font-bold underline underline-offset-2'
-                      >
-                        View it
-                      </Link>{' '}
-                      or{' '}
-                      <Link
-                        href={`/wap/${duplicate.bookmarkId}/edit`}
-                        className='font-bold underline underline-offset-2'
-                      >
-                        edit it
-                      </Link>
-                    </>
-                  )}
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {!duplicate?.exists &&
-              popularity !== undefined &&
-              popularity.users > 0 && (
-                <div className='mt-4 flex items-start gap-3 rounded-md border border-primary/40 bg-primary/10 px-4 py-3'>
-                  <Heart
-                    size={16}
-                    className='mt-0.5 flex-shrink-0 text-primary'
-                    fill='currentColor'
-                  />
-                  <div className='text-sm text-text-primary'>
-                    <span className='font-bold text-primary'>
-                      {popularity.users === 1
-                        ? 'Someone already loves this link.'
-                        : `${popularity.users} people are loving this link.`}
-                    </span>{' '}
-                    Make it public so others can discover it too.
-                    <button
-                      type='button'
-                      onClick={() => setMakePublic(true)}
-                      className='mt-2 block text-xs font-bold uppercase tracking-wider text-primary underline underline-offset-2'
-                    >
-                      Make public on save
-                    </button>
-                  </div>
+            {popularity !== undefined && popularity.users > 0 && (
+              <div className='mt-4 flex items-start gap-3 rounded-md border border-primary/40 bg-primary/10 px-4 py-3'>
+                <Heart
+                  size={16}
+                  className='mt-0.5 flex-shrink-0 text-primary'
+                  fill='currentColor'
+                />
+                <div className='text-sm text-text-primary'>
+                  <span className='font-bold text-primary'>
+                    {popularity.users === 1
+                      ? 'Someone already loves this link.'
+                      : `${popularity.users} people are loving this link.`}
+                  </span>{' '}
+                  Make it public so others can discover it too.
+                  <button
+                    type='button'
+                    onClick={() => setMakePublic(true)}
+                    className='mt-2 block text-xs font-bold uppercase tracking-wider text-primary underline underline-offset-2'
+                  >
+                    Make public on save
+                  </button>
                 </div>
-              )}
+              </div>
+            )}
           </section>
 
           {/* Details */}
@@ -477,8 +536,18 @@ export default function AddPage() {
           )}
 
           {saveStep && (
-            <p className='mt-4 text-center text-sm text-text-secondary'>
+            <p
+              role='status'
+              className='mt-4 text-center text-sm text-text-secondary'
+            >
               {saveStep}
+            </p>
+          )}
+
+          {pendingSaves > 0 && (
+            <p className='mt-2 text-center text-xs text-text-secondary'>
+              {pendingSaves} offline link{pendingSaves === 1 ? '' : 's'} pending
+              sync.
             </p>
           )}
 
@@ -506,11 +575,7 @@ export default function AddPage() {
             disabled={!canSave}
             className='waps-btn h-11 flex-[2] items-center justify-center active:scale-[0.98]'
           >
-            {busy
-              ? 'Saving...'
-              : duplicate?.exists
-                ? 'Already saved'
-                : 'Save Wap'}
+            {busy ? 'Saving...' : 'Save Wap'}
           </button>
         </div>
       </div>

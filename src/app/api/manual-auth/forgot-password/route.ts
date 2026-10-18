@@ -12,6 +12,12 @@ const client = () =>
   _client ??
   (_client = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!))
 
+const internalSecret = () => {
+  const secret = process.env.MANUAL_AUTH_INTERNAL_SECRET
+  if (!secret) throw new Error('Authentication service is not configured')
+  return secret
+}
+
 const bodySchema = z.object({
   email: z.string().email().max(254)
 })
@@ -22,7 +28,10 @@ export async function POST(req: Request) {
 
     let user: any = null
     try {
-      user = await client().query(api.authManual.getUserByEmail, { email })
+      user = await client().query(api.authManual.getUserByEmail, {
+        email,
+        internalSecret: internalSecret()
+      })
     } catch (e: any) {
       console.error('[forgot-password] Convex query error:', e?.message || e)
       return NextResponse.json(
@@ -32,7 +41,7 @@ export async function POST(req: Request) {
     }
 
     if (!user) {
-      console.log(`[forgot-password] No user found for ${email}`)
+      console.log('[forgot-password] No matching account')
       return NextResponse.json({ ok: true })
     }
 
@@ -43,7 +52,8 @@ export async function POST(req: Request) {
       await client().mutation(api.authManual.createResetToken, {
         email,
         token,
-        expiresAt
+        expiresAt,
+        internalSecret: internalSecret()
       })
     } catch (e: any) {
       console.error(
@@ -84,9 +94,9 @@ export async function POST(req: Request) {
           </div>
         `
       })
-      console.log(
-        `[forgot-password] Reset email sent to ${email}, id: ${result.data?.id}`
-      )
+      console.log('[forgot-password] Reset email sent', {
+        messageId: result.data?.id ?? 'unknown'
+      })
     } catch (e: any) {
       console.error('[forgot-password] Resend error:', e?.message || e)
       return NextResponse.json(

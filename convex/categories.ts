@@ -1,7 +1,7 @@
 import { getAuthUserId } from '@convex-dev/auth/server'
 import { v } from 'convex/values'
-import { mutation, query } from './_generated/server'
-import { sha256Hex } from './hash'
+import { internalQuery, mutation, query } from './_generated/server'
+import { findApiKey } from './apiKeys'
 
 async function resolveUserId(ctx: any, sessionToken?: string) {
   let userId = await getAuthUserId(ctx)
@@ -53,6 +53,83 @@ export const ensureDefaults = mutation({
   }
 })
 
+/** Persist the onboarding category selection while preserving default semantics. */
+export const configureOnboarding = mutation({
+  args: {
+    sessionToken: v.optional(v.string()),
+    defaultNames: v.array(v.string()),
+    customNames: v.array(v.string())
+  },
+  handler: async (ctx, args) => {
+    const userId = await resolveUserId(ctx, args.sessionToken)
+    if (!userId) throw new Error('Not authenticated')
+
+    const defaultLookup = new Map(
+      DEFAULT_CATEGORIES.map(name => [name.toLowerCase(), name])
+    )
+    const defaultNames: string[] = []
+    const seenDefaults = new Set<string>()
+    for (const rawName of args.defaultNames) {
+      const canonical = defaultLookup.get(rawName.trim().toLowerCase())
+      if (!canonical) throw new Error('Invalid default category')
+      if (!seenDefaults.has(canonical)) {
+        seenDefaults.add(canonical)
+        defaultNames.push(canonical)
+      }
+    }
+
+    const customNames: string[] = []
+    const seenCustom = new Set<string>()
+    for (const rawName of args.customNames) {
+      const name = rawName.trim()
+      const key = name.toLowerCase()
+      if (!name || name.length > 40) throw new Error('Invalid category name')
+      if (defaultLookup.has(key))
+        throw new Error('Default category is not custom')
+      if (!seenCustom.has(key)) {
+        seenCustom.add(key)
+        customNames.push(name)
+      }
+    }
+    if (customNames.length > 20) throw new Error('Too many custom categories')
+
+    const existing = await ctx.db
+      .query('categories')
+      .withIndex('by_user', q => q.eq('userId', userId))
+      .collect()
+    const byName = new Map(
+      existing.map(category => [category.name.toLowerCase(), category])
+    )
+
+    for (let i = 0; i < defaultNames.length; i++) {
+      const name = defaultNames[i]
+      const category = byName.get(name.toLowerCase())
+      if (category) {
+        await ctx.db.patch(category._id, { isDefault: true, order: i })
+      } else {
+        await ctx.db.insert('categories', {
+          userId,
+          name,
+          isDefault: true,
+          order: i
+        })
+      }
+    }
+
+    for (const name of customNames) {
+      if (byName.has(name.toLowerCase())) continue
+      await ctx.db.insert('categories', {
+        userId,
+        name,
+        isDefault: false,
+        order: 999
+      })
+    }
+
+    return { ok: true }
+  }
+})
+
 /** List categories for the authenticated user */
 export const list = query({
   args: { sessionToken: v.optional(v.string()) },
@@ -76,14 +153,10 @@ export const list = query({
   }
 })
 
-export const listByApiKey = query({
+export const listByApiKey = internalQuery({
   args: { apiKey: v.string() },
   handler: async (ctx, args) => {
-    const keyHash = await sha256Hex(args.apiKey)
-    const keyDoc = await ctx.db
-      .query('apiKeys')
-      .withIndex('by_key', q => q.eq('key', keyHash))
-      .first()
+    const keyDoc = await findApiKey(ctx, args.apiKey)
     if (!keyDoc) return []
     return await ctx.db
       .query('categories')

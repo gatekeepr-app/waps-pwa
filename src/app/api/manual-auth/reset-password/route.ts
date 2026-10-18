@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     } catch (e: any) {
       console.error('[reset-password] Convex error:', e?.message || e)
       return NextResponse.json(
-        { error: e?.message ?? 'Failed to reset password' },
+        { error: 'Invalid or expired reset link' },
         { status: 400 }
       )
     }
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
   } catch (e: any) {
     console.error('[reset-password] Error:', e)
     return NextResponse.json(
-      { error: e?.message ?? 'Failed to reset password' },
+      { error: 'Invalid reset request' },
       { status: 400 }
     )
   }

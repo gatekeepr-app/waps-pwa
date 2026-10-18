@@ -7,11 +7,11 @@ import { useMutation, useQuery } from 'convex/react'
 import { Check, Pencil, Plus, Trash2, X } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { api } from '../../../../convex/_generated/api'
 
-export default function ProfilePage() {
+function ProfilePageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { user, sessionToken, loading: sessionLoading } = useSession()
@@ -26,6 +26,8 @@ export default function ProfilePage() {
   const addCategory = useMutation(api.categories.add)
   const renameCategory = useMutation(api.categories.rename)
   const removeCategory = useMutation(api.categories.remove)
+  const revokeSession = useMutation(api.authManual.revokeSession)
+  const revokeAllSessions = useMutation(api.authManual.revokeAllSessions)
 
   const bookmarks = useQuery(
     api.bookmarks.list,
@@ -33,6 +35,10 @@ export default function ProfilePage() {
   )
   const categories = useQuery(
     api.categories.list,
+    sessionToken ? { sessionToken } : 'skip'
+  )
+  const sessions = useQuery(
+    api.authManual.listSessions,
     sessionToken ? { sessionToken } : 'skip'
   )
   const publicWaps = (bookmarks ?? []).filter(b => b.isPublic)
@@ -356,6 +362,78 @@ export default function ProfilePage() {
         )}
       </div>
 
+      <div className='waps-card mb-4 p-6'>
+        <div className='mb-1 flex items-center justify-between gap-3'>
+          <h2 className='text-sm font-bold uppercase tracking-widest text-text-secondary'>
+            Active sessions
+          </h2>
+          <button
+            type='button'
+            className='text-xs font-bold text-destructive underline underline-offset-2'
+            onClick={async () => {
+              if (!sessionToken) return
+              try {
+                await revokeAllSessions({ sessionToken })
+                await signOut()
+                router.push('/login')
+              } catch (err: any) {
+                toast.error(err?.message || 'Could not revoke sessions')
+              }
+            }}
+          >
+            Sign out everywhere
+          </button>
+        </div>
+        <p className='mb-4 text-sm text-text-secondary'>
+          Review where your account is signed in and revoke devices you do not
+          recognize.
+        </p>
+        <div className='space-y-2'>
+          {sessions?.map(session => (
+            <div
+              key={session.id}
+              className='flex items-center justify-between gap-3 rounded-md border border-border p-3'
+            >
+              <div className='min-w-0'>
+                <div className='text-sm font-medium text-text-primary'>
+                  {session.current ? 'This device' : 'Signed-in device'}
+                </div>
+                <div className='truncate text-xs text-text-secondary'>
+                  {session.userAgent || 'Browser session'}
+                </div>
+                <div className='text-xs text-text-secondary'>
+                  Signed in {new Date(session.createdAt).toLocaleString()}
+                </div>
+              </div>
+              <button
+                type='button'
+                className='shrink-0 text-xs font-bold text-destructive underline underline-offset-2'
+                onClick={async () => {
+                  if (!sessionToken) return
+                  try {
+                    await revokeSession({
+                      sessionToken,
+                      sessionId: session.id
+                    })
+                    if (session.current) {
+                      await signOut()
+                      router.push('/login')
+                    }
+                  } catch (err: any) {
+                    toast.error(err?.message || 'Could not revoke session')
+                  }
+                }}
+              >
+                Revoke
+              </button>
+            </div>
+          ))}
+          {sessions?.length === 0 && (
+            <p className='text-sm text-text-secondary'>No active sessions.</p>
+          )}
+        </div>
+      </div>
+
       <button
         onClick={handleSignOut}
         className='waps-btn-outline flex w-full items-center justify-center gap-2'
@@ -364,5 +442,13 @@ export default function ProfilePage() {
         Sign out
       </button>
     </div>
+  )
+}
+
+export default function ProfilePage() {
+  return (
+    <Suspense fallback={null}>
+      <ProfilePageContent />
+    </Suspense>
   )
 }

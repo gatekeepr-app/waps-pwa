@@ -9,6 +9,13 @@ function randomKey(): string {
   return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('')
 }
 
+function randomPairingCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  const bytes = new Uint8Array(6)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, byte => chars[byte % chars.length]).join('')
+}
+
 const CODE_TTL_MS = 600_000
 const RATE_WINDOW_MS = 900_000
 const RATE_MAX_ATTEMPTS = 10
@@ -32,10 +39,7 @@ export const generatePairingCode = mutation({
     const user = await ctx.db.get(userId)
     const username = user?.name || user?.email?.split('@')[0] || 'user'
 
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-    let code = ''
-    for (let i = 0; i < 6; i++)
-      code += chars[Math.floor(Math.random() * chars.length)]
+    const code = randomPairingCode()
 
     const rawKey = randomKey()
     const keyHash = await sha256Hex(rawKey)
@@ -70,28 +74,28 @@ export const generatePairingCode = mutation({
 /** Redeem a pairing code: single-use, expiry-checked, and rate-limited
  *  per client IP (max RATE_MAX_ATTEMPTS failures per RATE_WINDOW_MS). */
 export const redeemPairingCode = mutation({
-  args: { code: v.string(), ip: v.optional(v.string()) },
+  args: { code: v.string() },
   handler: async (ctx, args) => {
-    const ip = args.ip ?? 'unknown'
+    const code = args.code.trim().toUpperCase()
+    if (!/^[A-Z2-9]{6}$/.test(code)) return { error: 'not_found' as const }
+    const identifier = `pairing-code:${code}`
 
-    if (args.ip) {
-      const limitDoc = await ctx.db
-        .query('pairingAttempts')
-        .withIndex('by_identifier', q => q.eq('identifier', ip))
-        .first()
-      if (
-        limitDoc &&
-        Date.now() - limitDoc.windowStart < RATE_WINDOW_MS &&
-        limitDoc.attempts >= RATE_MAX_ATTEMPTS
-      ) {
-        return { error: 'rate_limited' as const }
-      }
+    const limitDoc = await ctx.db
+      .query('pairingAttempts')
+      .withIndex('by_identifier', q => q.eq('identifier', identifier))
+      .first()
+    if (
+      limitDoc &&
+      Date.now() - limitDoc.windowStart < RATE_WINDOW_MS &&
+      limitDoc.attempts >= RATE_MAX_ATTEMPTS
+    ) {
+      return { error: 'rate_limited' as const }
     }
 
     const fail = async () => {
       const limitDoc = await ctx.db
         .query('pairingAttempts')
-        .withIndex('by_identifier', q => q.eq('identifier', ip))
+        .withIndex('by_identifier', q => q.eq('identifier', identifier))
         .first()
       if (limitDoc && Date.now() - limitDoc.windowStart < RATE_WINDOW_MS) {
         await ctx.db.patch(limitDoc._id, { attempts: limitDoc.attempts + 1 })
@@ -102,7 +106,7 @@ export const redeemPairingCode = mutation({
         })
       } else {
         await ctx.db.insert('pairingAttempts', {
-          identifier: ip,
+          identifier,
           attempts: 1,
           windowStart: Date.now()
         })
@@ -112,7 +116,7 @@ export const redeemPairingCode = mutation({
 
     const doc = await ctx.db
       .query('pairingCodes')
-      .withIndex('by_code', q => q.eq('code', args.code.toUpperCase()))
+      .withIndex('by_code', q => q.eq('code', code))
       .first()
     if (!doc) return await fail()
     if (Date.now() - doc.createdAt > CODE_TTL_MS) {
@@ -122,11 +126,11 @@ export const redeemPairingCode = mutation({
 
     // Single use: consume the code and clear the failure counter
     await ctx.db.delete(doc._id)
-    const limitDoc = await ctx.db
+    const currentLimitDoc = await ctx.db
       .query('pairingAttempts')
-      .withIndex('by_identifier', q => q.eq('identifier', ip))
+      .withIndex('by_identifier', q => q.eq('identifier', identifier))
       .first()
-    if (limitDoc) await ctx.db.delete(limitDoc._id)
+    if (currentLimitDoc) await ctx.db.delete(currentLimitDoc._id)
 
     return {
       apiKey: doc.apiKey,

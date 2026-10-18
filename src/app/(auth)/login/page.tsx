@@ -1,6 +1,7 @@
 'use client'
 
 import { fetchMe, signIn, signUp } from '@/lib/auth-api'
+import { hasSeenMobileOnboarding, isMobileDevice } from '@/lib/onboarding'
 import { Eye, EyeOff, Github, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -48,7 +49,12 @@ export default function LoginPage() {
       if (meNow.user)
         localStorage.setItem('waps:user', JSON.stringify(meNow.user))
 
-      router.push(tab === 'signup' ? '/onboarding/categories' : '/bookmarks')
+      const shouldShowOnboarding =
+        tab === 'signup' ||
+        (meNow.user &&
+          isMobileDevice(navigator.userAgent, navigator.maxTouchPoints) &&
+          !hasSeenMobileOnboarding(meNow.user.id, localStorage))
+      router.push(shouldShowOnboarding ? '/onboarding' : '/bookmarks')
     } catch (err: any) {
       setError(err?.message || 'Something went wrong.')
     } finally {

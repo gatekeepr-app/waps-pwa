@@ -1,7 +1,13 @@
 import { getAuthUserId } from '@convex-dev/auth/server'
 import { v } from 'convex/values'
 import { internal } from './_generated/api'
-import { internalMutation, mutation, query } from './_generated/server'
+import {
+  internalMutation,
+  internalQuery,
+  mutation,
+  query
+} from './_generated/server'
+import { findApiKey } from './apiKeys'
 
 async function resolveUserId(ctx: any, sessionToken?: string) {
   let userId = await getAuthUserId(ctx)
@@ -30,23 +36,48 @@ export const list = query({
     const userId = await resolveUserId(ctx, args.sessionToken)
     if (!userId) return []
 
-    let q
-    if (args.categoryId) {
-      q = ctx.db
+    const search = args.search?.trim().toLowerCase()
+    let all: any[]
+    if (search && !args.categoryId && !args.collectionId) {
+      const indexed = await ctx.db
         .query('bookmarks')
-        .withIndex('by_user_category', (q: any) =>
-          q.eq('userId', userId).eq('categoryId', args.categoryId)
+        .withSearchIndex('search_content', (q: any) =>
+          q.search('searchText', search).eq('userId', userId)
         )
-    } else {
-      q = ctx.db
+        .collect()
+      const legacy = await ctx.db
         .query('bookmarks')
         .withIndex('by_user', (q: any) => q.eq('userId', userId))
+        .filter((q: any) => q.eq(q.field('searchText'), undefined))
+        .order('desc')
+        .collect()
+        .then((rows: any[]) =>
+          rows.filter((b: any) =>
+            buildSearchText(b)
+              .split(/\s+/)
+              .some((token: string) => token.includes(search))
+          )
+        )
+      all = [...indexed, ...legacy]
+    } else {
+      let q
+      if (args.categoryId) {
+        q = ctx.db
+          .query('bookmarks')
+          .withIndex('by_user_category', (q: any) =>
+            q.eq('userId', userId).eq('categoryId', args.categoryId)
+          )
+      } else {
+        q = ctx.db
+          .query('bookmarks')
+          .withIndex('by_user', (q: any) => q.eq('userId', userId))
+      }
+      if (args.collectionId)
+        q = q.filter((doc: any) =>
+          doc.eq(doc.field('collectionId'), args.collectionId)
+        )
+      all = await q.order('desc').collect()
     }
-    if (args.collectionId)
-      q = q.filter((doc: any) =>
-        doc.eq(doc.field('collectionId'), args.collectionId)
-      )
-    const all = await q.order('desc').collect()
 
     const categories = await ctx.db
       .query('categories')
@@ -64,20 +95,75 @@ export const list = query({
       filtered = filtered.filter((b: any) => b.tags?.includes(args.tag))
     if (args.read !== undefined)
       filtered = filtered.filter((b: any) => b.isRead === args.read)
-    if (args.search) {
-      const s = args.search.toLowerCase()
+    if (search) {
+      const s = search
       filtered = filtered.filter(
         (b: any) =>
           (b.title ?? '').toLowerCase().includes(s) ||
           b.url.toLowerCase().includes(s) ||
           (b.description ?? '').toLowerCase().includes(s) ||
-          (b.textContent ?? '').toLowerCase().includes(s)
+          (b.textContent ?? '').toLowerCase().includes(s) ||
+          (b.tags ?? []).some((tag: string) => tag.toLowerCase().includes(s))
       )
     }
     filtered = filtered.filter((b: any) => !b.isTrashed)
     return filtered.sort(
       (a: any, b: any) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0)
     )
+  }
+})
+
+export const listSavedSearches = query({
+  args: { sessionToken: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const userId = await resolveUserId(ctx, args.sessionToken)
+    if (!userId) return []
+    return await ctx.db
+      .query('savedSearches')
+      .withIndex('by_user', (q: any) => q.eq('userId', userId))
+      .order('desc')
+      .take(50)
+  }
+})
+
+export const saveSearch = mutation({
+  args: {
+    sessionToken: v.optional(v.string()),
+    name: v.string(),
+    query: v.string()
+  },
+  handler: async (ctx, args) => {
+    const userId = await resolveUserId(ctx, args.sessionToken)
+    if (!userId) throw new Error('Not authenticated')
+    const name = args.name.trim().slice(0, 60)
+    const query = args.query.trim().slice(0, 200)
+    if (!name || !query) throw new Error('Search name and query are required')
+
+    const existing = await ctx.db
+      .query('savedSearches')
+      .withIndex('by_user', (q: any) => q.eq('userId', userId))
+      .filter((q: any) => q.eq(q.field('query'), query))
+      .first()
+    if (existing) return existing._id
+
+    return await ctx.db.insert('savedSearches', {
+      userId,
+      name,
+      query,
+      createdAt: Date.now()
+    })
+  }
+})
+
+export const removeSavedSearch = mutation({
+  args: { sessionToken: v.optional(v.string()), id: v.id('savedSearches') },
+  handler: async (ctx, args) => {
+    const userId = await resolveUserId(ctx, args.sessionToken)
+    if (!userId) throw new Error('Not authenticated')
+    const saved = await ctx.db.get(args.id)
+    if (!saved || saved.userId !== userId) throw new Error('Not found')
+    await ctx.db.delete(args.id)
+    return { ok: true }
   }
 })
 
@@ -90,6 +176,20 @@ export const getById = query({
     if (!b || b.userId !== userId) return null
     return b
   }
+})
+
+export const getByIdInternal = internalQuery({
+  args: { id: v.id('bookmarks') },
+  handler: async (ctx, args) => ctx.db.get(args.id)
+})
+
+export const listAllInternal = internalQuery({
+  args: {},
+  handler: async ctx =>
+    ctx.db
+      .query('bookmarks')
+      .filter((q: any) => q.neq(q.field('isTrashed'), true))
+      .collect()
 })
 
 /** Normalize a URL: default scheme, lowercase host, drop www and
@@ -201,6 +301,25 @@ function hostOf(url: string): string {
   }
 }
 
+export function buildSearchText(bookmark: {
+  url?: string
+  title?: string
+  description?: string
+  textContent?: string
+  tags?: string[]
+}): string {
+  return [
+    bookmark.title,
+    bookmark.url,
+    bookmark.description,
+    bookmark.textContent,
+    ...(bookmark.tags ?? [])
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+}
+
 /** Maintain the global per-URL saver counter used by trending/explore. */
 async function bumpUrlStat(ctx: any, url: string, delta: number) {
   const doc = await ctx.db
@@ -284,6 +403,7 @@ export const add = mutation({
   args: {
     sessionToken: v.optional(v.string()),
     url: v.string(),
+    clientRequestId: v.optional(v.string()),
     title: v.optional(v.string()),
     description: v.optional(v.string()),
     collectionId: v.optional(v.id('collections')),
@@ -293,6 +413,17 @@ export const add = mutation({
   handler: async (ctx, args) => {
     const userId = await resolveUserId(ctx, (args as any).sessionToken)
     if (!userId) throw new Error('Not authenticated')
+    if (args.clientRequestId) {
+      if (args.clientRequestId.length > 100)
+        throw new Error('Invalid client request id')
+      const previous = await ctx.db
+        .query('bookmarks')
+        .withIndex('by_user_clientRequestId', (q: any) =>
+          q.eq('userId', userId).eq('clientRequestId', args.clientRequestId)
+        )
+        .first()
+      if (previous) return previous._id
+    }
     const url = normalizeUrlInput(args.url)
     if (!url) throw new Error('Invalid URL')
     const existing = await findExisting(ctx, userId, url)
@@ -302,9 +433,15 @@ export const add = mutation({
     const bookmarkId = await ctx.db.insert('bookmarks', {
       userId,
       url,
+      clientRequestId: args.clientRequestId,
       sourceBookmarkId: source?._id,
       title: args.title ?? source?.title,
       description: args.description,
+      searchText: buildSearchText({
+        url,
+        title: args.title ?? source?.title,
+        description: args.description
+      }),
       collectionId: args.collectionId,
       categoryId: args.categoryId,
       isPublic: args.isPublic,
@@ -338,7 +475,8 @@ export const shareQuickAdd = mutation({
     await bumpUrlStat(ctx, url, 1)
     const bookmarkId = await ctx.db.insert('bookmarks', {
       userId,
-      url
+      url,
+      searchText: buildSearchText({ url })
     })
     await ctx.scheduler.runAfter(0, (internal as any).metadata.fetchMetadata, {
       bookmarkId,
@@ -474,7 +612,10 @@ export const addTag = mutation({
     const b = await ctx.db.get(args.id)
     if (!b || b.userId !== userId) throw new Error('Not found')
     const tags = [...(b.tags ?? []), args.tag]
-    await ctx.db.patch(args.id, { tags })
+    await ctx.db.patch(args.id, {
+      tags,
+      searchText: buildSearchText({ ...b, tags })
+    })
   }
 })
 
@@ -490,7 +631,10 @@ export const removeTag = mutation({
     const b = await ctx.db.get(args.id)
     if (!b || b.userId !== userId) throw new Error('Not found')
     const tags = (b.tags ?? []).filter((t: string) => t !== args.tag)
-    await ctx.db.patch(args.id, { tags })
+    await ctx.db.patch(args.id, {
+      tags,
+      searchText: buildSearchText({ ...b, tags })
+    })
   }
 })
 
@@ -505,7 +649,25 @@ export const setTags = mutation({
     if (!userId) throw new Error('Not authenticated')
     const b = await ctx.db.get(args.bookmarkId)
     if (!b || b.userId !== userId) throw new Error('Not found')
-    await ctx.db.patch(args.bookmarkId, { tags: args.tags })
+    await ctx.db.patch(args.bookmarkId, {
+      tags: args.tags,
+      searchText: buildSearchText({ ...b, tags: args.tags })
+    })
+  }
+})
+
+export const setTagsInternal = internalMutation({
+  args: {
+    bookmarkId: v.id('bookmarks'),
+    tags: v.array(v.string())
+  },
+  handler: async (ctx, args) => {
+    const bookmark = await ctx.db.get(args.bookmarkId)
+    if (!bookmark) return
+    await ctx.db.patch(args.bookmarkId, {
+      tags: args.tags,
+      searchText: buildSearchText({ ...bookmark, tags: args.tags })
+    })
   }
 })
 
@@ -520,6 +682,11 @@ export const updateCollection = mutation({
     if (!userId) throw new Error('Not authenticated')
     const b = await ctx.db.get(args.bookmarkId)
     if (!b || b.userId !== userId) throw new Error('Not found')
+    if (args.collectionId) {
+      const collection = await ctx.db.get(args.collectionId)
+      if (!collection || collection.userId !== userId)
+        throw new Error('Invalid collection')
+    }
     await ctx.db.patch(args.bookmarkId, { collectionId: args.collectionId })
   }
 })
@@ -553,8 +720,14 @@ export const batchMoveCollection = mutation({
     if (!userId) throw new Error('Not authenticated')
     for (const id of args.ids) {
       const b = await ctx.db.get(id)
-      if (b && b.userId === userId)
+      if (b && b.userId === userId) {
+        if (args.collectionId) {
+          const collection = await ctx.db.get(args.collectionId)
+          if (!collection || collection.userId !== userId)
+            throw new Error('Invalid collection')
+        }
         await ctx.db.patch(id, { collectionId: args.collectionId })
+      }
     }
   }
 })
@@ -594,7 +767,13 @@ export const importAll = mutation({
           url,
           title: b.title,
           description: b.description,
-          tags: b.tags
+          tags: b.tags,
+          searchText: buildSearchText({
+            url,
+            title: b.title,
+            description: b.description,
+            tags: b.tags
+          })
         })
         await ctx.scheduler.runAfter(
           0,
@@ -622,6 +801,8 @@ export const updateMetadata = internalMutation({
     description: v.optional(v.string())
   },
   handler: async (ctx, args) => {
+    const bookmark = await ctx.db.get(args.bookmarkId)
+    if (!bookmark) return
     const patch: Record<string, any> = {}
     if (args.title !== undefined) patch.title = args.title
     if (args.image !== undefined) patch.image = args.image
@@ -631,6 +812,16 @@ export const updateMetadata = internalMutation({
     if (args.screenshotUrl !== undefined)
       patch.screenshotUrl = args.screenshotUrl
     if (args.description !== undefined) patch.description = args.description
+    patch.searchText = buildSearchText({
+      ...bookmark,
+      title: args.title !== undefined ? args.title : bookmark.title,
+      description:
+        args.description !== undefined
+          ? args.description
+          : bookmark.description,
+      textContent:
+        args.textContent !== undefined ? args.textContent : bookmark.textContent
+    })
     await ctx.db.patch(args.bookmarkId, patch)
   }
 })
@@ -659,6 +850,13 @@ export const update = mutation({
     }
     if (args.categoryId !== undefined)
       patch.categoryId = args.categoryId ?? undefined
+    patch.searchText = buildSearchText({
+      ...b,
+      title: args.title !== undefined ? args.title : b.title,
+      description:
+        args.description !== undefined ? args.description : b.description,
+      url: args.url !== undefined ? args.url : b.url
+    })
     await ctx.db.patch(args.id, patch)
   }
 })
@@ -847,7 +1045,7 @@ export const renameTag = mutation({
   }
 })
 
-export const purgeOldTrash = mutation({
+export const purgeOldTrash = internalMutation({
   args: {},
   handler: async ctx => {
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000
@@ -898,7 +1096,7 @@ export const getRemindersDue = query({
   }
 })
 
-export const listByUser = query({
+export const listByUser = internalQuery({
   args: {
     sessionToken: v.optional(v.string()),
     apiKey: v.optional(v.string())
@@ -906,10 +1104,7 @@ export const listByUser = query({
   handler: async (ctx, args) => {
     let userId = await resolveUserId(ctx, args.sessionToken)
     if (!userId && args.apiKey) {
-      const keyDoc = await ctx.db
-        .query('apiKeys')
-        .withIndex('by_key', (q: any) => q.eq('key', args.apiKey))
-        .first()
+      const keyDoc = await findApiKey(ctx, args.apiKey)
       if (keyDoc) userId = keyDoc.userId
     }
     if (!userId) return []
@@ -933,7 +1128,7 @@ export const getAll = query({
   }
 })
 
-export const addByHttp = mutation({
+export const addByHttp = internalMutation({
   args: {
     userId: v.id('users'),
     url: v.string(),
@@ -945,6 +1140,11 @@ export const addByHttp = mutation({
   handler: async (ctx, args) => {
     const url = normalizeUrlInput(args.url)
     if (!url) throw new Error('Invalid URL')
+    if (args.categoryId) {
+      const category = await ctx.db.get(args.categoryId)
+      if (!category || category.userId !== args.userId)
+        throw new Error('Invalid category')
+    }
     const existing = await findExisting(ctx, args.userId, url)
     if (existing) throw new Error(`Bookmark already exists:${existing._id}`)
     const source = await findAnyExisting(ctx, url)
@@ -954,6 +1154,11 @@ export const addByHttp = mutation({
       url,
       sourceBookmarkId: source?._id,
       title: args.title ?? source?.title,
+      searchText: buildSearchText({
+        url,
+        title: args.title ?? source?.title,
+        tags: args.tags
+      }),
       categoryId: args.categoryId,
       tags: args.tags,
       favicon: source?.favicon,
@@ -981,6 +1186,7 @@ export const getByPublicId = query({
     const b = await ctx.db
       .query('bookmarks')
       .withIndex('by_publicId', (q: any) => q.eq('publicId', args.publicId))
+      .filter((q: any) => q.eq(q.field('isPublic'), true))
       .first()
     return b ? publicView(b) : null
   }
@@ -989,7 +1195,10 @@ export const getByPublicId = query({
 /** #1+#7: Explore feed with engagement-weighted ranking.
  *  score = log-scaled saver count, share-link boost, HN-style time decay. */
 export const exploreFeed = query({
-  args: { sort: v.optional(v.union(v.literal('trending'), v.literal('new'))) },
+  args: {
+    sort: v.optional(v.union(v.literal('trending'), v.literal('new'))),
+    limit: v.optional(v.number())
+  },
   handler: async (ctx, args) => {
     const sort = args.sort ?? 'trending'
     const pubs = await ctx.db
@@ -1020,7 +1229,8 @@ export const exploreFeed = query({
     }
     if (sort === 'trending') out.sort((a: any, b: any) => b.score - a.score)
     else out.sort((a: any, b: any) => b._creationTime - a._creationTime)
-    return out.slice(0, 60)
+    const limit = Math.min(Math.max(Math.floor(args.limit ?? 60), 1), 60)
+    return out.slice(0, limit)
   }
 })
 

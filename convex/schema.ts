@@ -7,9 +7,11 @@ const schema = defineSchema({
   bookmarks: defineTable({
     userId: v.id('users'),
     url: v.string(),
+    clientRequestId: v.optional(v.string()),
     sourceBookmarkId: v.optional(v.id('bookmarks')),
     title: v.optional(v.string()),
     description: v.optional(v.string()),
+    searchText: v.optional(v.string()),
     favicon: v.optional(v.string()),
     image: v.optional(v.string()),
     collectionId: v.optional(v.id('collections')),
@@ -29,13 +31,18 @@ const schema = defineSchema({
   })
     .index('by_user', ['userId'])
     .index('by_user_url', ['userId', 'url'])
+    .index('by_user_clientRequestId', ['userId', 'clientRequestId'])
     .index('by_url', ['url'])
     .index('by_user_category', ['userId', 'categoryId'])
     .index('by_remindAt', ['remindAt'])
     .index('by_publicId', ['publicId'])
     .index('by_public', ['isPublic'])
     .index('by_trashed', ['isTrashed'])
-    .index('by_user_trashed', ['userId', 'isTrashed']),
+    .index('by_user_trashed', ['userId', 'isTrashed'])
+    .searchIndex('search_content', {
+      searchField: 'searchText',
+      filterFields: ['userId']
+    }),
   collections: defineTable({
     userId: v.id('users'),
     name: v.string(),
@@ -62,6 +69,11 @@ const schema = defineSchema({
     attempts: v.number(),
     windowStart: v.number()
   }).index('by_identifier', ['identifier']),
+  authAttempts: defineTable({
+    identifier: v.string(),
+    attempts: v.number(),
+    windowStart: v.number()
+  }).index('by_identifier', ['identifier']),
   resetTokens: defineTable({
     email: v.string(),
     token: v.string(),
@@ -74,13 +86,20 @@ const schema = defineSchema({
     token: v.string(),
     userId: v.id('users'),
     createdAt: v.number(),
-    expiresAt: v.number()
+    expiresAt: v.number(),
+    userAgent: v.optional(v.string())
   }).index('by_token', ['token']),
   categories: defineTable({
     userId: v.id('users'),
     name: v.string(),
     isDefault: v.optional(v.boolean()),
     order: v.optional(v.number())
+  }).index('by_user', ['userId']),
+  savedSearches: defineTable({
+    userId: v.id('users'),
+    name: v.string(),
+    query: v.string(),
+    createdAt: v.number()
   }).index('by_user', ['userId']),
   urlStats: defineTable({
     url: v.string(),

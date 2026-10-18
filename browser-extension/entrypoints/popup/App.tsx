@@ -48,7 +48,11 @@ export default function App() {
         setMakePublic(!!data.makePublic)
         if (data.wapsApiKey) {
           fetch(
-            `${data.wapsConvexUrl || DEFAULT_CONVEX_SITE}/api/extension/options?key=${encodeURIComponent(data.wapsApiKey)}`
+            `${data.wapsConvexUrl || DEFAULT_CONVEX_SITE}/api/extension/options`,
+            {
+              method: 'POST',
+              headers: { 'X-API-Key': data.wapsApiKey }
+            }
           )
             .then(res => res.json())
             .then(options => setCategories(options.categories || []))
@@ -95,9 +99,11 @@ export default function App() {
     try {
       const res = await fetch(`${convexUrl}/api/add`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`
+        },
         body: JSON.stringify({
-          apiKey,
           url: url.trim(),
           title: title.trim(),
           categoryId: categoryId || undefined,

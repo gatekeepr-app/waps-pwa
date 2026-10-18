@@ -1,11 +1,72 @@
 import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
+import {
+  AUTH_RATE_WINDOW_MS,
+  isAuthAttemptLimited,
+  normalizeEmail
+} from './authSecurity'
 
 const ITERATIONS = 100_000
 const KEY_LENGTH = 32
 const ALGORITHM = 'PBKDF2'
 const HASH_ALGORITHM = 'SHA-256'
 const PREFIX = 'pbkdf2$'
+function requireInternalSecret(secret: string): void {
+  const expected = process.env.MANUAL_AUTH_INTERNAL_SECRET
+  if (!expected || secret !== expected) {
+    throw new Error('Unauthorized')
+  }
+}
+
+function requireValidPassword(password: string): void {
+  if (password.length < 8 || password.length > 128) {
+    throw new Error('Password must be between 8 and 128 characters')
+  }
+}
+
+function authIdentifier(email: string): string {
+  return normalizeEmail(email)
+}
+
+async function isAuthRateLimited(ctx: any, email: string): Promise<boolean> {
+  const record = await ctx.db
+    .query('authAttempts')
+    .withIndex('by_identifier', (q: any) =>
+      q.eq('identifier', authIdentifier(email))
+    )
+    .first()
+  return isAuthAttemptLimited(record)
+}
+
+async function recordAuthFailure(ctx: any, email: string): Promise<void> {
+  const identifier = authIdentifier(email)
+  const now = Date.now()
+  const record = await ctx.db
+    .query('authAttempts')
+    .withIndex('by_identifier', (q: any) => q.eq('identifier', identifier))
+    .first()
+  if (record && now - record.windowStart < AUTH_RATE_WINDOW_MS) {
+    await ctx.db.patch(record._id, { attempts: record.attempts + 1 })
+  } else if (record) {
+    await ctx.db.patch(record._id, { attempts: 1, windowStart: now })
+  } else {
+    await ctx.db.insert('authAttempts', {
+      identifier,
+      attempts: 1,
+      windowStart: now
+    })
+  }
+}
+
+async function clearAuthFailures(ctx: any, email: string): Promise<void> {
+  const record = await ctx.db
+    .query('authAttempts')
+    .withIndex('by_identifier', (q: any) =>
+      q.eq('identifier', authIdentifier(email))
+    )
+    .first()
+  if (record) await ctx.db.delete(record._id)
+}
 
 /** The authAccounts schema has no salt field, so the salt is embedded in
  *  the secret with a version prefix: "pbkdf2$<saltHex>$<hashHex>". */
@@ -113,12 +174,15 @@ async function verifyLegacySecret(
 
 /** Look up user by email */
 export const getUserByEmail = query({
-  args: { email: v.string() },
-  handler: async (ctx, { email }) => {
-    return await ctx.db
+  args: { email: v.string(), internalSecret: v.string() },
+  handler: async (ctx, { email, internalSecret }) => {
+    requireInternalSecret(internalSecret)
+    const identifier = authIdentifier(email)
+    const user = await ctx.db
       .query('users')
-      .withIndex('email', q => q.eq('email', email))
+      .withIndex('email', q => q.eq('email', identifier))
       .first()
+    return user ? { _id: user._id, email: user.email, name: user.name } : null
   }
 })
 
@@ -131,11 +195,19 @@ export const getUserByEmail = query({
 export const verifyCredentials = mutation({
   args: { email: v.string(), password: v.string() },
   handler: async (ctx, { email, password }) => {
+    const identifier = authIdentifier(email)
+    if (await isAuthRateLimited(ctx, email)) {
+      throw new Error('Too many sign-in attempts. Try again later.')
+    }
+
     const user = await ctx.db
       .query('users')
-      .withIndex('email', q => q.eq('email', email))
+      .withIndex('email', q => q.eq('email', identifier))
       .first()
-    if (!user) throw new Error('Invalid email or password')
+    if (!user) {
+      await recordAuthFailure(ctx, identifier)
+      throw new Error('Invalid email or password')
+    }
 
     const account = await ctx.db
       .query('authAccounts')
@@ -148,7 +220,10 @@ export const verifyCredentials = mutation({
 
     if (account) {
       const secret = (account as any).secret as string | undefined
-      if (!secret) throw new Error('Invalid email or password')
+      if (!secret) {
+        await recordAuthFailure(ctx, identifier)
+        throw new Error('Invalid email or password')
+      }
       if (isCurrentSecret(secret)) {
         valid = await verifyPassword(password, secret)
       } else {
@@ -156,12 +231,20 @@ export const verifyCredentials = mutation({
       }
     } else {
       const bcryptHash = (user as any).passwordHash as string | undefined
-      if (!bcryptHash) throw new Error('Invalid email or password')
+      if (!bcryptHash) {
+        await recordAuthFailure(ctx, identifier)
+        throw new Error('Invalid email or password')
+      }
       const bcrypt = await import('bcryptjs')
       valid = await bcrypt.compare(password, bcryptHash)
     }
 
-    if (!valid) throw new Error('Invalid email or password')
+    if (!valid) {
+      await recordAuthFailure(ctx, identifier)
+      throw new Error('Invalid email or password')
+    }
+
+    await clearAuthFailures(ctx, identifier)
 
     // Upgrade legacy credentials to the current format
     const { hash, salt } = await hashPassword(password)
@@ -174,7 +257,7 @@ export const verifyCredentials = mutation({
       await ctx.db.insert('authAccounts', {
         userId: user._id,
         provider: 'password',
-        providerAccountId: email,
+        providerAccountId: identifier,
         secret: encoded
       } as any)
     }
@@ -191,23 +274,25 @@ export const signup = mutation({
     name: v.optional(v.string())
   },
   handler: async (ctx, { email, password, name }) => {
+    requireValidPassword(password)
+    const identifier = authIdentifier(email)
     const existing = await ctx.db
       .query('users')
-      .withIndex('email', q => q.eq('email', email))
+      .withIndex('email', q => q.eq('email', identifier))
       .first()
     if (existing) throw new Error('Email already in use')
 
     const { hash, salt } = await hashPassword(password)
 
     const userId = await ctx.db.insert('users', {
-      email,
+      email: identifier,
       name: name ?? undefined
     })
 
     await ctx.db.insert('authAccounts', {
       userId,
       provider: 'password',
-      providerAccountId: email,
+      providerAccountId: identifier,
       secret: encodeSecret(salt, hash)
     } as any)
 
@@ -220,14 +305,26 @@ export const createSession = mutation({
   args: {
     userId: v.id('users'),
     token: v.string(),
-    expiresAt: v.number()
+    expiresAt: v.number(),
+    userAgent: v.optional(v.string()),
+    internalSecret: v.string()
   },
-  handler: async (ctx, { userId, token, expiresAt }) => {
+  handler: async (
+    ctx,
+    { userId, token, expiresAt, userAgent, internalSecret }
+  ) => {
+    requireInternalSecret(internalSecret)
+    if (!token || token.length < 32) throw new Error('Invalid session token')
+    const maxLifetime = 30 * 24 * 60 * 60 * 1000
+    if (expiresAt <= Date.now() || expiresAt > Date.now() + maxLifetime) {
+      throw new Error('Invalid session expiry')
+    }
     await ctx.db.insert('sessions', {
       userId,
       token,
       createdAt: Date.now(),
-      expiresAt
+      expiresAt,
+      userAgent: userAgent?.slice(0, 512)
     })
     return { ok: true }
   }
@@ -242,7 +339,73 @@ export const sessionUser = query({
       .withIndex('by_token', q => q.eq('token', token))
       .first()
     if (!sess || sess.expiresAt < Date.now()) return null
-    return await ctx.db.get(sess.userId)
+    const user = await ctx.db.get(sess.userId)
+    return user ? { _id: user._id, email: user.email, name: user.name } : null
+  }
+})
+
+/** List the current user's active sessions without returning bearer tokens. */
+export const listSessions = query({
+  args: { sessionToken: v.string() },
+  handler: async (ctx, { sessionToken }) => {
+    const current = await ctx.db
+      .query('sessions')
+      .withIndex('by_token', q => q.eq('token', sessionToken))
+      .first()
+    if (!current || current.expiresAt <= Date.now()) return []
+
+    const sessions = await ctx.db
+      .query('sessions')
+      .filter(q => q.eq(q.field('userId'), current.userId))
+      .collect()
+    return sessions
+      .filter(session => session.expiresAt > Date.now())
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .map(session => ({
+        id: session._id,
+        createdAt: session.createdAt,
+        expiresAt: session.expiresAt,
+        userAgent: session.userAgent ?? null,
+        current: session._id === current._id
+      }))
+  }
+})
+
+/** Revoke one session owned by the currently authenticated user. */
+export const revokeSession = mutation({
+  args: { sessionToken: v.string(), sessionId: v.id('sessions') },
+  handler: async (ctx, { sessionToken, sessionId }) => {
+    const current = await ctx.db
+      .query('sessions')
+      .withIndex('by_token', q => q.eq('token', sessionToken))
+      .first()
+    const target = await ctx.db.get(sessionId)
+    if (!current || current.expiresAt <= Date.now() || !target) {
+      throw new Error('Session not found')
+    }
+    if (target.userId !== current.userId) throw new Error('Session not found')
+    await ctx.db.delete(sessionId)
+    return { ok: true }
+  }
+})
+
+/** Revoke every session for the current user, including the current session. */
+export const revokeAllSessions = mutation({
+  args: { sessionToken: v.string() },
+  handler: async (ctx, { sessionToken }) => {
+    const current = await ctx.db
+      .query('sessions')
+      .withIndex('by_token', q => q.eq('token', sessionToken))
+      .first()
+    if (!current || current.expiresAt <= Date.now()) {
+      throw new Error('Session not found')
+    }
+    const sessions = await ctx.db
+      .query('sessions')
+      .filter(q => q.eq(q.field('userId'), current.userId))
+      .collect()
+    for (const session of sessions) await ctx.db.delete(session._id)
+    return { ok: true }
   }
 })
 
@@ -261,9 +424,24 @@ export const deleteSessionByToken = mutation({
 
 /** Create a password reset token */
 export const createResetToken = mutation({
-  args: { email: v.string(), token: v.string(), expiresAt: v.number() },
-  handler: async (ctx, { email, token, expiresAt }) => {
-    await ctx.db.insert('resetTokens', { email, token, expiresAt })
+  args: {
+    email: v.string(),
+    token: v.string(),
+    expiresAt: v.number(),
+    internalSecret: v.string()
+  },
+  handler: async (ctx, { email, token, expiresAt, internalSecret }) => {
+    requireInternalSecret(internalSecret)
+    const identifier = authIdentifier(email)
+    if (!token || token.length < 32) throw new Error('Invalid reset token')
+    if (expiresAt <= Date.now() || expiresAt > Date.now() + 60 * 60 * 1000) {
+      throw new Error('Invalid reset-token expiry')
+    }
+    await ctx.db.insert('resetTokens', {
+      email: identifier,
+      token: await sha256Hex(token),
+      expiresAt
+    })
     return { ok: true }
   }
 })
@@ -272,17 +450,26 @@ export const createResetToken = mutation({
 export const resetPassword = mutation({
   args: { token: v.string(), newPassword: v.string() },
   handler: async (ctx, { token, newPassword }) => {
+    requireValidPassword(newPassword)
+    const tokenHash = await sha256Hex(token)
     const doc = await ctx.db
       .query('resetTokens')
-      .withIndex('by_token', q => q.eq('token', token))
+      .withIndex('by_token', q => q.eq('token', tokenHash))
       .first()
-    if (!doc) throw new Error('Invalid or expired reset token')
-    if (doc.consumed) throw new Error('Token already used')
-    if (doc.expiresAt < Date.now()) throw new Error('Token expired')
+    const legacyDoc = doc
+      ? null
+      : await ctx.db
+          .query('resetTokens')
+          .withIndex('by_token', q => q.eq('token', token))
+          .first()
+    const resetToken = doc ?? legacyDoc
+    if (!resetToken) throw new Error('Invalid or expired reset token')
+    if (resetToken.consumed) throw new Error('Token already used')
+    if (resetToken.expiresAt < Date.now()) throw new Error('Token expired')
 
     const user = await ctx.db
       .query('users')
-      .withIndex('email', q => q.eq('email', doc.email))
+      .withIndex('email', q => q.eq('email', authIdentifier(resetToken.email)))
       .first()
     if (!user) throw new Error('User not found')
 
@@ -296,7 +483,15 @@ export const resetPassword = mutation({
 
     const { hash, salt } = await hashPassword(newPassword)
     await ctx.db.patch(account._id, { secret: encodeSecret(salt, hash) } as any)
-    await ctx.db.patch(doc._id, { consumed: true })
+    await ctx.db.patch(resetToken._id, { consumed: true })
+
+    const sessions = await ctx.db
+      .query('sessions')
+      .filter(q => q.eq(q.field('userId'), user._id))
+      .collect()
+    for (const session of sessions) {
+      await ctx.db.delete(session._id)
+    }
 
     return { ok: true }
   }

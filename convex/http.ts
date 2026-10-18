@@ -1,5 +1,5 @@
 import { httpRouter } from 'convex/server'
-import { api } from './_generated/api'
+import { api, internal } from './_generated/api'
 import { httpAction } from './_generated/server'
 import { auth } from './auth'
 
@@ -11,21 +11,34 @@ http.route({
   path: '/api/add',
   method: 'POST',
   handler: httpAction(async (ctx, request) => {
-    const body = await request.json()
-    const apiKey = body?.apiKey
+    let body: any
+    try {
+      body = await request.json()
+    } catch {
+      return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+    const apiKey = readApiKey(request)
     const url = body?.url
-    const title = body?.title
+    const title =
+      typeof body?.title === 'string'
+        ? body.title.trim().slice(0, 500)
+        : undefined
     const categoryId = body?.categoryId || undefined
     const tags = Array.isArray(body?.tags)
       ? body.tags
+          .slice(0, 20)
           .map((tag: unknown) => String(tag).trim().toLowerCase())
+          .map((tag: string) => tag.slice(0, 40))
           .filter(Boolean)
       : undefined
     const isPublic = body?.isPublic === true
 
-    if (!apiKey || !url) {
+    if (!apiKey || typeof url !== 'string' || url.length > 2048) {
       return new Response(
-        JSON.stringify({ error: 'apiKey and url required' }),
+        JSON.stringify({ error: 'Authorization and url required' }),
         {
           status: 400,
           headers: { 'Content-Type': 'application/json' }
@@ -33,7 +46,7 @@ http.route({
       )
     }
 
-    const keyDoc = await ctx.runQuery(api.apiKeys.validateApiKey, {
+    const keyDoc = await ctx.runQuery(internal.apiKeys.validateApiKey, {
       key: apiKey
     })
     if (!keyDoc) {
@@ -44,7 +57,7 @@ http.route({
     }
 
     try {
-      const id = await ctx.runMutation(api.bookmarks.addByHttp, {
+      const id = await ctx.runMutation((internal as any).bookmarks.addByHttp, {
         userId: keyDoc.userId,
         url,
         title: title || undefined,
@@ -69,17 +82,16 @@ http.route({
 
 http.route({
   path: '/api/extension/options',
-  method: 'GET',
+  method: 'POST',
   handler: httpAction(async (ctx, request) => {
-    const url = new URL(request.url)
-    const apiKey = url.searchParams.get('key')
+    const apiKey = readApiKey(request)
     if (!apiKey) {
       return new Response(JSON.stringify({ error: 'key required' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' }
       })
     }
-    const keyDoc = await ctx.runQuery(api.apiKeys.validateApiKey, {
+    const keyDoc = await ctx.runQuery(internal.apiKeys.validateApiKey, {
       key: apiKey
     })
     if (!keyDoc) {
@@ -88,7 +100,7 @@ http.route({
         headers: { 'Content-Type': 'application/json' }
       })
     }
-    const categories = await ctx.runQuery(api.categories.listByApiKey, {
+    const categories = await ctx.runQuery(internal.categories.listByApiKey, {
       apiKey
     })
     return new Response(JSON.stringify({ categories }), {
@@ -163,19 +175,24 @@ http.route({
   path: '/api/pair',
   method: 'POST',
   handler: httpAction(async (ctx, request) => {
-    const body = await request.json()
+    let body: any
+    try {
+      body = await request.json()
+    } catch {
+      return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
     const code = body?.code
-    if (!code) {
+    if (typeof code !== 'string' || !/^[A-Za-z2-9]{6}$/.test(code.trim())) {
       return new Response(JSON.stringify({ error: 'Code required' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' }
       })
     }
-    const forwardedFor = request.headers.get('x-forwarded-for') ?? undefined
-    const ip = forwardedFor?.split(',')[0]?.trim() || undefined
     const doc = await ctx.runMutation(api.pairing.redeemPairingCode, {
-      code,
-      ip
+      code
     })
     if ('error' in doc && doc.error === 'rate_limited') {
       return new Response(
@@ -197,7 +214,10 @@ http.route({
     }
     return new Response(JSON.stringify(doc), {
       status: 200,
-      headers: { 'Content-Type': 'application/json' }
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store'
+      }
     })
   })
 })
@@ -206,15 +226,14 @@ http.route({
   path: '/api/widget/bookmarks',
   method: 'GET',
   handler: httpAction(async (ctx, request) => {
-    const url = new URL(request.url)
-    const apiKey = url.searchParams.get('key')
+    const apiKey = readApiKey(request)
     if (!apiKey) {
       return new Response(JSON.stringify({ error: 'key required' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' }
       })
     }
-    const keyDoc = await ctx.runQuery(api.apiKeys.validateApiKey, {
+    const keyDoc = await ctx.runQuery(internal.apiKeys.validateApiKey, {
       key: apiKey
     })
     if (!keyDoc) {
@@ -223,7 +242,7 @@ http.route({
         headers: { 'Content-Type': 'application/json' }
       })
     }
-    const bookmarks = await ctx.runQuery(api.bookmarks.listByUser, {
+    const bookmarks = await ctx.runQuery(internal.bookmarks.listByUser, {
       apiKey
     })
     return new Response(JSON.stringify(bookmarks), {
@@ -235,19 +254,30 @@ http.route({
 
 http.route({
   path: '/api/widget/add',
-  method: 'GET',
+  method: 'POST',
   handler: httpAction(async (ctx, request) => {
-    const url = new URL(request.url)
-    const apiKey = url.searchParams.get('key')
-    const targetUrl = url.searchParams.get('url')
-    const title = url.searchParams.get('title') || undefined
-    if (!apiKey || !targetUrl) {
+    let body: any
+    try {
+      body = await request.json()
+    } catch {
+      return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+    const apiKey = readApiKey(request)
+    const targetUrl = body?.url
+    const title =
+      typeof body?.title === 'string'
+        ? body.title.trim().slice(0, 500)
+        : undefined
+    if (!apiKey || typeof targetUrl !== 'string' || targetUrl.length > 2048) {
       return new Response(JSON.stringify({ error: 'key and url required' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' }
       })
     }
-    const keyDoc = await ctx.runQuery(api.apiKeys.validateApiKey, {
+    const keyDoc = await ctx.runQuery(internal.apiKeys.validateApiKey, {
       key: apiKey
     })
     if (!keyDoc) {
@@ -257,7 +287,7 @@ http.route({
       })
     }
     try {
-      const id = await ctx.runMutation(api.bookmarks.addByHttp, {
+      const id = await ctx.runMutation((internal as any).bookmarks.addByHttp, {
         userId: keyDoc.userId,
         url: targetUrl,
         title
@@ -283,6 +313,17 @@ function escapeHtml(text: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+}
+
+function readApiKey(request: Request): string | null {
+  const direct = request.headers.get('x-api-key')
+  if (direct && direct.trim().length <= 256) return direct.trim()
+  const authorization = request.headers.get('authorization')
+  if (authorization?.toLowerCase().startsWith('bearer ')) {
+    const bearer = authorization.slice(7).trim()
+    return bearer.length <= 256 ? bearer : null
+  }
+  return null
 }
 
 export default http

@@ -2,17 +2,15 @@
   "name": "waps-bookmarking",
   "version": "1.0.0",
   "private": true,
-  "workspaces": [
-    "browser-extension"
-  ],
+  "packageManager": "pnpm@11.9.0",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
-    "extension:dev": "npm run dev -w @waps/extension",
-    "extension:build": "npm run build -w @waps/extension",
+    "extension:dev": "pnpm --filter @waps/extension dev",
+    "extension:build": "pnpm --filter @waps/extension build",
     "format": "prettier --check . --write \"src/**/*{js,ts,css,scss,json,tsx,jsx,mdx,md}\" \"*.{js,ts,tsx,jsx,mdx,md}\"",
     "prepare": "husky",
     "lint-staged": "lint-staged"

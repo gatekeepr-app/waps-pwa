@@ -14,17 +14,20 @@ import { useMutation, useQuery } from 'convex/react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { useMemo, useState } from 'react'
+import { Suspense, useMemo, useState } from 'react'
 import { api } from '../../../../convex/_generated/api'
 
-export default function BookmarksPage() {
+function BookmarksPageContent() {
   const { sessionToken, loading: sessionLoading } = useSession()
   const searchParams = useSearchParams()
   const activeTag = searchParams.get('tag') || undefined
+  const [search, setSearch] = useState('')
 
   const bookmarks = useQuery(
     api.bookmarks.list,
-    sessionToken ? { sessionToken, tag: activeTag } : 'skip'
+    sessionToken
+      ? { sessionToken, tag: activeTag, search: search || undefined }
+      : 'skip'
   )
   const categories = useQuery(
     api.categories.list,
@@ -34,11 +37,17 @@ export default function BookmarksPage() {
   const toggleRead = useMutation(api.bookmarks.toggleRead)
   const remove = useMutation(api.bookmarks.remove)
   const batchMoveCategory = useMutation(api.bookmarks.batchMoveCategory)
+  const saveSearch = useMutation(api.bookmarks.saveSearch)
+  const removeSavedSearch = useMutation(api.bookmarks.removeSavedSearch)
+  const savedSearches = useQuery(
+    api.bookmarks.listSavedSearches,
+    sessionToken ? { sessionToken } : 'skip'
+  )
 
-  const [search, setSearch] = useState('')
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [filterCategory, setFilterCategory] = useState<string | null>(null)
   const [readFilter, setReadFilter] = useState<'all' | 'unread' | 'read'>('all')
+  const [savedSearchName, setSavedSearchName] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
   const categoryCounts = useMemo(() => {
@@ -66,7 +75,10 @@ export default function BookmarksPage() {
           (b.title ?? '').toLowerCase().includes(s) ||
           b.url.toLowerCase().includes(s) ||
           (b.description ?? '').toLowerCase().includes(s) ||
-          ((b as any).textContent ?? '').toLowerCase().includes(s)
+          ((b as any).textContent ?? '').toLowerCase().includes(s) ||
+          ((b as any).tags ?? []).some((tag: string) =>
+            tag.toLowerCase().includes(s)
+          )
       )
     }
     return result.sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0))
@@ -143,6 +155,61 @@ export default function BookmarksPage() {
           {view === 'grid' ? <ListIcon size={16} /> : <GridIcon size={16} />}
         </button>
       </div>
+
+      <div className='mb-4 flex gap-2'>
+        <input
+          type='text'
+          value={savedSearchName}
+          onChange={e => setSavedSearchName(e.target.value)}
+          placeholder='Name this search'
+          maxLength={60}
+          className='waps-input min-w-0 flex-1'
+          disabled={!search.trim()}
+        />
+        <button
+          type='button'
+          className='waps-btn-outline whitespace-nowrap px-3 text-xs'
+          disabled={!search.trim() || !savedSearchName.trim()}
+          onClick={async () => {
+            if (!sessionToken || !search.trim() || !savedSearchName.trim())
+              return
+            await saveSearch({
+              sessionToken,
+              name: savedSearchName,
+              query: search
+            })
+            setSavedSearchName('')
+          }}
+        >
+          Save search
+        </button>
+      </div>
+
+      {savedSearches && savedSearches.length > 0 && (
+        <div className='mb-4 flex flex-wrap gap-2'>
+          {savedSearches.map(saved => (
+            <span
+              key={saved._id}
+              className='inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs text-text-secondary'
+            >
+              <button type='button' onClick={() => setSearch(saved.query)}>
+                {saved.name}
+              </button>
+              <button
+                type='button'
+                aria-label={`Remove saved search ${saved.name}`}
+                className='font-bold text-destructive'
+                onClick={() =>
+                  sessionToken &&
+                  removeSavedSearch({ sessionToken, id: saved._id })
+                }
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
 
       {categories.length > 0 && (
         <div className='mb-4 grid gap-2 sm:grid-cols-2'>
@@ -363,5 +430,13 @@ export default function BookmarksPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function BookmarksPage() {
+  return (
+    <Suspense fallback={null}>
+      <BookmarksPageContent />
+    </Suspense>
   )
 }

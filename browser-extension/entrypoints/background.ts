@@ -22,9 +22,11 @@ export default defineBackground(() => {
     if (!data.wapsApiKey) return
     await fetch(`${data.wapsConvexUrl || DEFAULT_CONVEX_SITE}/api/add`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${data.wapsApiKey}`
+      },
       body: JSON.stringify({
-        apiKey: data.wapsApiKey,
         url: targetUrl,
         title: info.selectionText || undefined,
         isPublic: data.makePublic === true

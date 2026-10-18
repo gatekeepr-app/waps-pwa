@@ -39,14 +39,14 @@ Built with **Next.js 14**, **Convex**, **Tailwind CSS**, and **Serwist** (PWAs).
 ### Prerequisites
 
 - Node.js >= 20
-- npm
+- pnpm 11+
 
 ### Installation
 
 ```sh
 git clone https://github.com/gatekeepr-app/waps-pwa.git
 cd waps-pwa
-npm install
+pnpm install
 ```
 
 ### Environment Variables
@@ -57,19 +57,20 @@ Copy `.env.example` to `.env.local` and fill in the values:
 cp .env.example .env.local
 ```
 
-| Variable                      | Required | Description                                |
-| ----------------------------- | -------- | ------------------------------------------ |
-| `NEXT_PUBLIC_CONVEX_URL`      | Yes      | Your Convex deployment URL                 |
-| `NEXT_PUBLIC_CONVEX_SITE_URL` | Yes      | Your Convex site URL                       |
-| `NEXT_PUBLIC_SITE_URL`        | No       | Canonical app URL used for sitemap/robots  |
-| `RESEND_API_KEY`              | No       | Resend API key for password reset emails   |
-| `CONTACT_TO`                  | No       | Email address for contact form submissions |
-| `CONTACT_FROM`                | No       | Verified sender email for outgoing emails  |
+| Variable                      | Required | Description                                             |
+| ----------------------------- | -------- | ------------------------------------------------------- |
+| `NEXT_PUBLIC_CONVEX_URL`      | Yes      | Your Convex deployment URL                              |
+| `NEXT_PUBLIC_CONVEX_SITE_URL` | Yes      | Your Convex site URL                                    |
+| `MANUAL_AUTH_INTERNAL_SECRET` | Yes      | Shared server-only secret for manual auth orchestration |
+| `NEXT_PUBLIC_SITE_URL`        | No       | Canonical app URL used for sitemap/robots               |
+| `RESEND_API_KEY`              | No       | Resend API key for password reset emails                |
+| `CONTACT_TO`                  | No       | Email address for contact form submissions              |
+| `CONTACT_FROM`                | No       | Verified sender email for outgoing emails               |
 
 ### Running Locally
 
 ```sh
-npm run dev
+pnpm dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
@@ -79,16 +80,18 @@ Open [http://localhost:3000](http://localhost:3000).
 This project uses Convex for the backend. Start the Convex dev server:
 
 ```sh
-npx convex dev
+pnpm convex dev
 ```
 
 To deploy to production:
 
 ```sh
-npx convex deploy
+pnpm convex deploy
 ```
 
 ## Project Structure
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for Mermaid system, request-flow, module, and data-model graphs.
 
 ```
 src/
@@ -134,21 +137,21 @@ browser-extension/         # WXT + React browser extension (MV3)
 
 ## Scripts
 
-| Script              | Description                 |
-| ------------------- | --------------------------- |
-| `npm run dev`       | Start dev server            |
-| `npm run build`     | Build for production        |
-| `npm start`         | Start production server     |
-| `npm run lint`      | Lint with ESLint            |
-| `npm run format`    | Format with Prettier        |
-| `npx convex dev`    | Start Convex dev backend    |
-| `npx convex deploy` | Deploy Convex to production |
+| Script               | Description                 |
+| -------------------- | --------------------------- |
+| `pnpm dev`           | Start dev server            |
+| `pnpm build`         | Build for production        |
+| `pnpm start`         | Start production server     |
+| `pnpm lint`          | Lint with ESLint            |
+| `pnpm format`        | Format with Prettier        |
+| `pnpm convex dev`    | Start Convex dev backend    |
+| `pnpm convex deploy` | Deploy Convex to production |
 
 ## Deployment
 
-1. Deploy Convex: `npx convex deploy`
+1. Deploy Convex: `pnpm convex deploy`
 2. Set `NEXT_PUBLIC_CONVEX_URL` (and optionally `NEXT_PUBLIC_SITE_URL`) in your host's environment
-3. Build: `npm run build`
+3. Build: `pnpm build`
 4. Deploy the Next.js app to Vercel, Railway, or any Node.js host
 
 ## License
