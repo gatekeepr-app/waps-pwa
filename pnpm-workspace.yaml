@@ -1,6 +1,6 @@
 packages:
   - browser-extension
 
-onlyBuiltDependencies:
-  - esbuild
-  - unrs-resolver
+allowBuilds:
+  esbuild: true
+  unrs-resolver: true
