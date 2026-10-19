@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
+import { toast } from '@/hooks/use-toast'
 import { useSession } from '@/lib/use-session'
 import { useMutation, useQuery } from 'convex/react'
 import { BookOpen, Check, Globe, Heart } from 'lucide-react'
@@ -24,7 +25,6 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { toast } from 'sonner'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 

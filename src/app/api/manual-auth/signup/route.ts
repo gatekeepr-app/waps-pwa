@@ -1,9 +1,9 @@
 export const runtime = 'nodejs'
 
+import { signUpBodySchema } from '@/lib/auth-validation'
 import { ConvexHttpClient } from 'convex/browser'
 import { randomBytes } from 'crypto'
 import { NextResponse } from 'next/server'
-import { z } from 'zod'
 import { api } from '../../../../../convex/_generated/api'
 
 let _client: ConvexHttpClient | null = null
@@ -17,15 +17,9 @@ const internalSecret = () => {
   return secret
 }
 
-const bodySchema = z.object({
-  email: z.string().email().max(254),
-  password: z.string().min(8).max(128),
-  name: z.string().max(80).optional()
-})
-
 export async function POST(req: Request) {
   try {
-    const { email, password, name } = bodySchema.parse(await req.json())
+    const { email, password, name } = signUpBodySchema.parse(await req.json())
 
     const { userId } = await client().mutation(api.authManual.signup, {
       email,

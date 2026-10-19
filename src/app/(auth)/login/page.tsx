@@ -1,5 +1,6 @@
 'use client'
 
+import { toast } from '@/hooks/use-toast'
 import { fetchMe, signIn, signUp } from '@/lib/auth-api'
 import { hasSeenMobileOnboarding, isMobileDevice } from '@/lib/onboarding'
 import { Eye, EyeOff, Github, Loader2 } from 'lucide-react'
@@ -24,15 +25,27 @@ export default function LoginPage() {
     const name = (fd.get('name') as string) || ''
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setError('Please enter a valid email address.')
+      const message = 'Please enter a valid email address.'
+      setError(message)
+      toast.error(message)
       return
     }
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters.')
+    if (!password) {
+      const message = 'Please enter your password.'
+      setError(message)
+      toast.error(message)
+      return
+    }
+    if (tab === 'signup' && password.length < 8) {
+      const message = 'Password must be at least 8 characters.'
+      setError(message)
+      toast.error(message)
       return
     }
     if (tab === 'signup' && name && name.trim().length < 2) {
-      setError('Name must be at least 2 characters.')
+      const message = 'Name must be at least 2 characters.'
+      setError(message)
+      toast.error(message)
       return
     }
 
@@ -54,9 +67,16 @@ export default function LoginPage() {
         (meNow.user &&
           isMobileDevice(navigator.userAgent, navigator.maxTouchPoints) &&
           !hasSeenMobileOnboarding(meNow.user.id, localStorage))
+      toast.success(
+        tab === 'signin'
+          ? 'Signed in successfully.'
+          : 'Account created successfully.'
+      )
       router.push(shouldShowOnboarding ? '/onboarding' : '/bookmarks')
     } catch (err: any) {
-      setError(err?.message || 'Something went wrong.')
+      const message = err?.message || 'Something went wrong.'
+      setError(message)
+      toast.error(message)
     } finally {
       setBusy(false)
     }
@@ -65,7 +85,9 @@ export default function LoginPage() {
   function handleGitHubOAuth() {
     const clientId = process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID
     if (!clientId) {
-      setError('GitHub OAuth not configured.')
+      const message = 'GitHub OAuth not configured.'
+      setError(message)
+      toast.error(message)
       return
     }
     const redirectUri = `${window.location.origin}/api/auth/github/callback`

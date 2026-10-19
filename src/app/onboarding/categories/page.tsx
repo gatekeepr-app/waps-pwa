@@ -1,11 +1,11 @@
 'use client'
 
+import { toast } from '@/hooks/use-toast'
 import { useSession } from '@/lib/use-session'
 import { useMutation, useQuery } from 'convex/react'
 import { Check, Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
-import { toast } from 'sonner'
 import { api } from '../../../../convex/_generated/api'
 
 const SUGGESTED_CATEGORIES = [

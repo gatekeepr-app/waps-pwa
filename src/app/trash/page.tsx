@@ -1,10 +1,10 @@
 'use client'
 
 import { BackIcon } from '@/components/GeometricIcons'
+import { toast } from '@/hooks/use-toast'
 import { useSession } from '@/lib/use-session'
 import { useMutation, useQuery } from 'convex/react'
 import Link from 'next/link'
-import { toast } from 'sonner'
 import { api } from '../../../convex/_generated/api'
 
 export default function TrashPage() {

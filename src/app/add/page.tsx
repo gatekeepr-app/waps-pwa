@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
+import { toast } from '@/hooks/use-toast'
 import {
   createOfflineSaveRequestId,
   enqueueOfflineSave,
@@ -116,6 +117,16 @@ export default function AddPage() {
         ? `${result.remaining} offline link${result.remaining === 1 ? '' : 's'} still waiting to sync.`
         : ''
     )
+    if (result.synced > 0) {
+      toast.success(
+        `${result.synced} offline link${result.synced === 1 ? '' : 's'} synced.`
+      )
+    }
+    if (result.remaining > 0) {
+      toast.info(
+        `${result.remaining} offline link${result.remaining === 1 ? '' : 's'} still waiting to sync.`
+      )
+    }
   }, [addBookmark, sessionToken, setTags, user?.id])
 
   useEffect(() => {
@@ -181,12 +192,16 @@ export default function AddPage() {
 
     const finalUrl = normalizeUrlInput(url)
     if (!finalUrl) {
-      setError('Please enter a valid URL.')
+      const message = 'Please enter a valid URL.'
+      setError(message)
+      toast.error(message)
       return
     }
 
     if (!user?.id || !sessionToken) {
-      setError('Your session is still loading. Please try again.')
+      const message = 'Your session is still loading. Please try again.'
+      setError(message)
+      toast.error(message)
       return
     }
 
@@ -206,6 +221,7 @@ export default function AddPage() {
       setSaveStep(
         'Saved offline. It will sync automatically when you reconnect.'
       )
+      toast.success('Saved offline. It will sync when you reconnect.')
       setBusy(false)
       return
     }
@@ -231,6 +247,7 @@ export default function AddPage() {
         })
       }
       setSaveStep('Fetching metadata...')
+      toast.success('Link saved.')
       router.push(`/wap/${newId}`)
     } catch (err: any) {
       if (isRetryableOfflineError(err)) {
@@ -240,10 +257,15 @@ export default function AddPage() {
         setSaveStep(
           'Saved locally. It will sync automatically when the connection returns.'
         )
+        toast.success(
+          'Saved locally. It will sync when the connection returns.'
+        )
         setBusy(false)
         return
       }
-      setError(err?.message || 'Failed to add bookmark.')
+      const message = err?.message || 'Failed to add bookmark.'
+      setError(message)
+      toast.error(message)
       setBusy(false)
       setSaveStep('')
     }

@@ -1,9 +1,9 @@
 export const runtime = 'nodejs'
 
+import { signInBodySchema } from '@/lib/auth-validation'
 import { ConvexHttpClient } from 'convex/browser'
 import { randomBytes } from 'crypto'
 import { NextResponse } from 'next/server'
-import { z } from 'zod'
 import { api } from '../../../../../convex/_generated/api'
 
 let _client: ConvexHttpClient | null = null
@@ -17,13 +17,8 @@ const internalSecret = () => {
   return secret
 }
 
-const bodySchema = z.object({
-  email: z.string().email().max(254),
-  password: z.string().min(8).max(128)
-})
-
 export async function POST(req: Request) {
-  const parsed = bodySchema.safeParse(await req.json().catch(() => null))
+  const parsed = signInBodySchema.safeParse(await req.json().catch(() => null))
   if (!parsed.success)
     return NextResponse.json(
       { error: 'Enter a valid email and password.' },

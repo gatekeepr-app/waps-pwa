@@ -1,6 +1,7 @@
 'use client'
 
 import { LogOutIcon } from '@/components/GeometricIcons'
+import { toast } from '@/hooks/use-toast'
 import { signOut } from '@/lib/auth-api'
 import { useSession } from '@/lib/use-session'
 import { useMutation, useQuery } from 'convex/react'
@@ -8,7 +9,6 @@ import { Check, Pencil, Plus, Trash2, X } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import { toast } from 'sonner'
 import { api } from '../../../../convex/_generated/api'
 
 function ProfilePageContent() {
