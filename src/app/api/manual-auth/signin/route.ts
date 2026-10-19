@@ -23,16 +23,45 @@ const bodySchema = z.object({
 })
 
 export async function POST(req: Request) {
-  try {
-    const { email, password } = bodySchema.parse(await req.json())
+  const parsed = bodySchema.safeParse(await req.json().catch(() => null))
+  if (!parsed.success)
+    return NextResponse.json(
+      { error: 'Enter a valid email and password.' },
+      { status: 400 }
+    )
 
-    const { userId } = await client().mutation(
-      api.authManual.verifyCredentials,
-      {
+  const { email, password } = parsed.data
+
+  try {
+    // Fail as a service configuration error instead of recording an auth
+    // attempt when the session bridge is not configured on the deployment.
+    const secret = internalSecret()
+
+    let userId: any
+    try {
+      const result = await client().mutation(api.authManual.verifyCredentials, {
         email,
         password
-      }
-    )
+      })
+      userId = result.userId
+    } catch (error: any) {
+      const message = String(error?.message ?? '')
+      if (message.includes('Too many sign-in attempts'))
+        return NextResponse.json(
+          { error: 'Too many sign-in attempts. Try again later.' },
+          { status: 429 }
+        )
+      if (message.includes('Invalid email or password'))
+        return NextResponse.json(
+          { error: 'Invalid email or password.' },
+          { status: 401 }
+        )
+      console.error('Manual sign-in verification failed', { message })
+      return NextResponse.json(
+        { error: 'Sign-in service unavailable. Please try again.' },
+        { status: 503 }
+      )
+    }
 
     const token = randomBytes(32).toString('base64url')
     const maxAgeDays = 30
@@ -43,7 +72,7 @@ export async function POST(req: Request) {
       token,
       expiresAt,
       userAgent: req.headers.get('user-agent') ?? undefined,
-      internalSecret: internalSecret()
+      internalSecret: secret
     })
 
     const res = NextResponse.json({ ok: true, userId })
@@ -55,10 +84,13 @@ export async function POST(req: Request) {
       maxAge: maxAgeDays * 24 * 60 * 60
     })
     return res
-  } catch (e: any) {
+  } catch (error: any) {
+    console.error('Manual sign-in session creation failed', {
+      message: String(error?.message ?? '')
+    })
     return NextResponse.json(
-      { error: e?.message ?? 'Sign in failed' },
-      { status: 400 }
+      { error: 'Sign-in service unavailable. Please try again.' },
+      { status: 503 }
     )
   }
 }
