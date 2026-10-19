@@ -2,6 +2,7 @@ import { v } from 'convex/values'
 import { mutation, query } from './_generated/server'
 import {
   AUTH_RATE_WINDOW_MS,
+  ipIdentifier,
   isAuthAttemptLimited,
   normalizeEmail
 } from './authSecurity'
@@ -28,18 +29,18 @@ function authIdentifier(email: string): string {
   return normalizeEmail(email)
 }
 
-async function isAuthRateLimited(ctx: any, email: string): Promise<boolean> {
+async function isRateLimited(ctx: any, identifier: string): Promise<boolean> {
   const record = await ctx.db
     .query('authAttempts')
-    .withIndex('by_identifier', (q: any) =>
-      q.eq('identifier', authIdentifier(email))
-    )
+    .withIndex('by_identifier', (q: any) => q.eq('identifier', identifier))
     .first()
   return isAuthAttemptLimited(record)
 }
 
-async function recordAuthFailure(ctx: any, email: string): Promise<void> {
-  const identifier = authIdentifier(email)
+async function recordFailureByIdentifier(
+  ctx: any,
+  identifier: string
+): Promise<void> {
   const now = Date.now()
   const record = await ctx.db
     .query('authAttempts')
@@ -58,14 +59,35 @@ async function recordAuthFailure(ctx: any, email: string): Promise<void> {
   }
 }
 
-async function clearAuthFailures(ctx: any, email: string): Promise<void> {
+async function clearFailuresByIdentifier(
+  ctx: any,
+  identifier: string
+): Promise<void> {
   const record = await ctx.db
     .query('authAttempts')
-    .withIndex('by_identifier', (q: any) =>
-      q.eq('identifier', authIdentifier(email))
-    )
+    .withIndex('by_identifier', (q: any) => q.eq('identifier', identifier))
     .first()
   if (record) await ctx.db.delete(record._id)
+}
+
+/** Record a failed credential check against the account and, when a trusted
+ *  proxy supplied one, the client IP. */
+async function recordAuthFailure(
+  ctx: any,
+  email: string,
+  ip?: string
+): Promise<void> {
+  await recordFailureByIdentifier(ctx, authIdentifier(email))
+  if (ip) await recordFailureByIdentifier(ctx, ipIdentifier(ip))
+}
+
+async function clearAuthFailures(
+  ctx: any,
+  email: string,
+  ip?: string
+): Promise<void> {
+  await clearFailuresByIdentifier(ctx, authIdentifier(email))
+  if (ip) await clearFailuresByIdentifier(ctx, ipIdentifier(ip))
 }
 
 /** The authAccounts schema has no salt field, so the salt is embedded in
@@ -193,10 +215,17 @@ export const getUserByEmail = query({
  *  - no authAccounts row -> legacy bcrypt passwordHash on user doc
  */
 export const verifyCredentials = mutation({
-  args: { email: v.string(), password: v.string() },
-  handler: async (ctx, { email, password }) => {
+  args: {
+    email: v.string(),
+    password: v.string(),
+    ip: v.optional(v.string())
+  },
+  handler: async (ctx, { email, password, ip }) => {
     const identifier = authIdentifier(email)
-    if (await isAuthRateLimited(ctx, email)) {
+    if (
+      (await isRateLimited(ctx, identifier)) ||
+      (ip && (await isRateLimited(ctx, ipIdentifier(ip))))
+    ) {
       throw new Error('Too many sign-in attempts. Try again later.')
     }
 
@@ -205,7 +234,7 @@ export const verifyCredentials = mutation({
       .withIndex('email', q => q.eq('email', identifier))
       .first()
     if (!user) {
-      await recordAuthFailure(ctx, identifier)
+      await recordAuthFailure(ctx, identifier, ip)
       throw new Error('Invalid email or password')
     }
 
@@ -221,7 +250,7 @@ export const verifyCredentials = mutation({
     if (account) {
       const secret = (account as any).secret as string | undefined
       if (!secret) {
-        await recordAuthFailure(ctx, identifier)
+        await recordAuthFailure(ctx, identifier, ip)
         throw new Error('Invalid email or password')
       }
       if (isCurrentSecret(secret)) {
@@ -232,7 +261,7 @@ export const verifyCredentials = mutation({
     } else {
       const bcryptHash = (user as any).passwordHash as string | undefined
       if (!bcryptHash) {
-        await recordAuthFailure(ctx, identifier)
+        await recordAuthFailure(ctx, identifier, ip)
         throw new Error('Invalid email or password')
       }
       const bcrypt = await import('bcryptjs')
@@ -240,11 +269,11 @@ export const verifyCredentials = mutation({
     }
 
     if (!valid) {
-      await recordAuthFailure(ctx, identifier)
+      await recordAuthFailure(ctx, identifier, ip)
       throw new Error('Invalid email or password')
     }
 
-    await clearAuthFailures(ctx, identifier)
+    await clearAuthFailures(ctx, identifier, ip)
 
     // Upgrade legacy credentials to the current format
     const { hash, salt } = await hashPassword(password)

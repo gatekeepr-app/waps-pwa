@@ -2,6 +2,7 @@
 
 import { BackIcon } from '@/components/GeometricIcons'
 import { toast } from '@/hooks/use-toast'
+import { parseBookmarkFile } from '@/lib/import-parsers'
 import { useSession } from '@/lib/use-session'
 import { useMutation } from 'convex/react'
 import Link from 'next/link'
@@ -17,12 +18,11 @@ export default function ImportPage() {
     if (!file || !sessionToken) return
     setBusy(true)
     try {
-      const html = await file.text()
-      const doc = new DOMParser().parseFromString(html, 'text/html')
-      const bookmarks = Array.from(doc.querySelectorAll('a[href]')).map(a => ({
-        url: (a as HTMLAnchorElement).href,
-        title: a.textContent?.trim() || undefined
-      }))
+      const bookmarks = parseBookmarkFile(file.name, await file.text())
+      if (bookmarks.length === 0) {
+        toast.error('No bookmarks found in that file')
+        return
+      }
       const result = await importAll({ sessionToken, bookmarks })
       toast.success(
         `Imported ${result.added}. ${result.duplicates} duplicates skipped.`
@@ -47,17 +47,18 @@ export default function ImportPage() {
         Import bookmarks
       </h1>
       <p className='mb-4 text-sm text-text-secondary'>
-        Upload a browser bookmarks HTML export.
+        Upload an export from Chrome, Edge, Firefox, Safari, Pocket, Raindrop,
+        or Notion (HTML, CSV, or JSON).
       </p>
       <label className='waps-card block cursor-pointer p-6 text-center text-sm text-text-secondary'>
         <input
           type='file'
-          accept='.html,text/html'
+          accept='.html,.htm,.csv,.json,text/html,text/csv,application/json'
           disabled={loading || busy}
           onChange={e => handleFile(e.target.files?.[0])}
           className='sr-only'
         />
-        {busy ? 'Importing...' : 'Choose HTML file'}
+        {busy ? 'Importing...' : 'Choose export file'}
       </label>
     </div>
   )

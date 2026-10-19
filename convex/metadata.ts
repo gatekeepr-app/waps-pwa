@@ -59,7 +59,17 @@ function isPrivateIpv6(hostname: string): boolean {
     return true
   if (value.startsWith('ff')) return true
   const mappedIpv4 = value.match(/^(?:0*:){0,5}ffff:(\d+\.\d+\.\d+\.\d+)$/)
-  return !!mappedIpv4 && isPrivateIpv4(mappedIpv4[1])
+  if (mappedIpv4) return isPrivateIpv4(mappedIpv4[1])
+  // WHATWG URL normalizes IPv4-mapped addresses to hex (::ffff:7f00:1).
+  const mappedHex = value.match(
+    /^(?:0*:){0,5}ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/
+  )
+  if (mappedHex) {
+    const hi = parseInt(mappedHex[1], 16)
+    const lo = parseInt(mappedHex[2], 16)
+    return isPrivateIpv4(`${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`)
+  }
+  return false
 }
 
 export function isSafeExternalUrl(raw: string): boolean {
@@ -92,6 +102,9 @@ async function assertSafeResolvedHost(raw: string): Promise<void> {
     throw new Error('Unsafe resolved address')
   }
 
+  // shortcut: DNS is resolved again by fetch, so a rebinding host can still
+  // swap the address between check and use. Close this with a pinned-address
+  // dispatcher or filtering proxy when outbound traffic needs hardening.
   const addresses = await lookup(hostname, { all: true, verbatim: true })
   if (
     addresses.length === 0 ||
@@ -101,6 +114,35 @@ async function assertSafeResolvedHost(raw: string): Promise<void> {
     )
   ) {
     throw new Error('Unsafe resolved address')
+  }
+}
+
+function configuredOrigins(): string[] {
+  return (process.env.SCREENSHOT_ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map(value => {
+      try {
+        return new URL(value.trim()).origin
+      } catch {
+        return ''
+      }
+    })
+    .filter(Boolean)
+}
+
+/** Screenshot provider URLs must be safe external URLs and, when an allowlist
+ *  is configured, match one of its origins. Empty allowlist keeps the previous
+ *  permissive behavior for self-hosted providers. */
+export function isAllowedScreenshotUrl(
+  raw: string,
+  allowedOrigins: string[]
+): boolean {
+  if (!isSafeExternalUrl(raw)) return false
+  if (allowedOrigins.length === 0) return true
+  try {
+    return allowedOrigins.includes(new URL(raw).origin)
+  } catch {
+    return false
   }
 }
 
@@ -326,24 +368,37 @@ export const suggestTags = internalAction({
   }
 })
 
+/** Definitive "this link is dead" statuses. 401/403/405/429 usually mean bot
+ *  protection or rate limiting, so they are not treated as broken. */
+export function isDeadLinkStatus(status: number): boolean {
+  return status === 404 || status === 410 || status >= 500
+}
+
 export const checkDeadLink = internalAction({
   args: { bookmarkId: v.id('bookmarks'), url: v.string() },
   handler: async (ctx, args) => {
+    let isBroken = false
     try {
-      const res = await fetchExternal(args.url, {
+      let res = await fetchExternal(args.url, {
         method: 'HEAD',
         headers: { 'User-Agent': 'Mozilla/5.0' }
       })
-      await ctx.runMutation(internal.bookmarks.updateMetadata, {
-        bookmarkId: args.bookmarkId,
-        isBroken: res.status >= 400
-      })
+      // Many sites reject HEAD; retry those with GET and drop the body.
+      if ([403, 405, 501].includes(res.status)) {
+        await res.body?.cancel()
+        res = await fetchExternal(args.url, {
+          headers: { 'User-Agent': 'Mozilla/5.0' }
+        })
+      }
+      await res.body?.cancel()
+      isBroken = isDeadLinkStatus(res.status)
     } catch {
-      await ctx.runMutation(internal.bookmarks.updateMetadata, {
-        bookmarkId: args.bookmarkId,
-        isBroken: true
-      })
+      isBroken = true
     }
+    await ctx.runMutation(internal.bookmarks.updateMetadata, {
+      bookmarkId: args.bookmarkId,
+      isBroken
+    })
   }
 })
 
@@ -374,7 +429,11 @@ export const captureScreenshot = internalAction({
     const apiKey = process.env.SCREENSHOT_API_KEY
     if (!apiUrl) return
     if (!isSafeExternalUrl(args.url)) return
-    if (!isSafeExternalUrl(apiUrl)) return
+
+    // Validate provider and returned image against an explicit allowlist when
+    // configured so a compromised provider cannot store arbitrary URLs.
+    const allowedOrigins = configuredOrigins()
+    if (!isAllowedScreenshotUrl(apiUrl, allowedOrigins)) return
 
     try {
       let screenshotUrl: string
@@ -395,7 +454,10 @@ export const captureScreenshot = internalAction({
         screenshotUrl = `${apiUrl}${encodeURIComponent(args.url)}`
       }
 
-      if (screenshotUrl) {
+      if (
+        screenshotUrl &&
+        isAllowedScreenshotUrl(screenshotUrl, allowedOrigins)
+      ) {
         await ctx.runMutation(internal.bookmarks.updateMetadata, {
           bookmarkId: args.bookmarkId,
           screenshotUrl

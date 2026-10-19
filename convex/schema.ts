@@ -47,8 +47,11 @@ const schema = defineSchema({
     userId: v.id('users'),
     name: v.string(),
     order: v.optional(v.float64()),
-    parentId: v.optional(v.id('collections'))
-  }).index('by_user', ['userId']),
+    parentId: v.optional(v.id('collections')),
+    publicId: v.optional(v.string())
+  })
+    .index('by_user', ['userId'])
+    .index('by_publicId', ['publicId']),
   apiKeys: defineTable({
     userId: v.id('users'),
     key: v.string(),

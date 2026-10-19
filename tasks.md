@@ -1,122 +1,92 @@
-# High-Severity Tasks
+# Waps — In-Progress Tasks
 
-Exported from the **Waps Product Backlog** Notion data source on 2026-10-19.
+Source: [Waps Product Backlog](https://app.notion.com/p/4737502f426b49d8bfb0aafd220be7c0) (Notion database)
+Fetched: 2026-10-20 · originally 9 items with Status = `In progress`
 
-This file includes every backlog record currently marked with `Severity: high`, including completed and in-progress work.
+| #   | Task                                  | Status      | Notes                                                       |
+| --- | ------------------------------------- | ----------- | ----------------------------------------------------------- |
+| 1   | Authentication security hardening     | In progress | IP limiter added; token bridge + deploy verification remain |
+| 2   | Metadata fetch SSRF/resource controls | Done        | allowlist + IPv4-mapped fix; rebinding documented           |
+| 3   | Link health monitoring                | Done        | HEAD→GET fallback, `/broken` page                           |
+| 4   | Duplicate merge workflow              | Done        | `/duplicates` page, merge into keeper                       |
+| 5   | Multi-source bookmark imports         | Done        | HTML / CSV / JSON parsers                                   |
+| 6   | AI tag and summary suggestions        | Done        | already implemented (Ollama, optional)                      |
+| 7   | PWA installation                      | Done        | already implemented                                         |
+| 8   | Public collections                    | Done        | collection CRUD + `/c/<slug>`                               |
+| 9   | Usage analytics                       | Done        | Insights card on Profile                                    |
 
-## Summary
+Verification: `npx tsc --noEmit` clean, `npx vitest run` 8 files / 28 tests passing.
 
-| #   | Task                                                                                              | Status | Category          | Last updated |
-| --- | ------------------------------------------------------------------------------------------------- | ------ | ----------------- | ------------ |
-| 1   | [Bookmark creation and editing](https://app.notion.com/p/3fde684b18768196bf4cc343904bbcb9)        | Done   | Bookmarks         | 2026-10-19   |
-| 2   | [Browser extension pairing](https://app.notion.com/p/3fde684b1876818fbde5d2f3e4b47b41)            | Done   | Browser extension | 2026-10-19   |
-| 3   | [Manual email/password authentication](https://app.notion.com/p/3fde684b187681ff8308de5317ef3109) | Done   | Authentication    | 2026-10-19   |
-| 4   | [Password reset flow](https://app.notion.com/p/3fde684b1876812aa898dbc0e1967387)                  | Done   | Authentication    | 2026-10-19   |
-| 5   | [API-key and HTTP integration](https://app.notion.com/p/3fde684b187681fabcfed3df98848867)         | Done   | Security          | 2026-10-19   |
-| 6   | [Device and session management](https://app.notion.com/p/3fde684b1876811188a6e113dc6b4710)        | Done   | Security          | 2026-10-19   |
-| 7   | [Full-text search](https://app.notion.com/p/3fde684b187681a490f9fce67ac392f5)                     | Done   | Search            | 2026-10-19   |
-| 8   | [Metadata fetching](https://app.notion.com/p/3fde684b187681dbaf0bd470713fc141)                    | Done   | AI and metadata   | 2026-10-19   |
+---
 
-## 1. Bookmark creation and editing
+## 1. Authentication security hardening
 
-- **Notion page:** [Open in Notion](https://app.notion.com/p/3fde684b18768196bf4cc343904bbcb9)
+- **Status:** In progress
+- **Backlog page:** https://app.notion.com/p/3fde684b187681bcb461d5cb1d6c1188
+
+Existing: canonical email normalization, DB-backed 10-attempt/15-minute account lockout, generic credential errors, security headers, forgot-password logs redacted, sign-in route status codes split from signup policy.
+
+Added 2026-10-20: opt-in per-IP sign-in limiter. `ipIdentifier()` in `convex/authSecurity.ts`, `verifyCredentials` accepts an optional `ip` and tracks an `ip:<addr>` bucket, `trustedClientIp()` in `src/lib/client-ip.ts` reads only the header named by `TRUSTED_IP_HEADER`, and `/api/manual-auth/signin` passes it. Tests in `tests/auth-security.test.ts` (5/5).
+
+Still open before Done:
+
+- Replace the browser-readable `/api/manual-auth/token` bridge with a server-side/session-aware Convex transport.
+- Set `TRUSTED_IP_HEADER` in the deployment and confirm a valid-credential browser sign-in against the deployed build.
+
+## 2. Metadata fetch SSRF/resource controls
+
 - **Status:** Done
-- **Last updated:** 2026-10-19
-- **Severity:** high
-- **Category:** Bookmarks
-- **Details:** Users can add, edit, normalize, categorize, tag, publish, and update saved links.
+- **Backlog page:** https://app.notion.com/p/3fde684b187681cdab7dc46e69c09238
 
-### Implementation notes
+Existing: DNS resolution per request and per redirect, private/reserved/multicast rejection, manual redirect validation, 10s timeout, 1 MB body cap, internal-only action.
 
-Users can add, edit, normalize, categorize, tag, publish, and update saved links.
+Added 2026-10-20: `SCREENSHOT_ALLOWED_ORIGINS` allowlist enforced by `isAllowedScreenshotUrl()` for both the provider request and the returned screenshot URL; fixed an IPv4-mapped IPv6 bypass (`::ffff:7f00:1`); `shortcut:` comment records the remaining DNS rebinding race (close with address pinning or a filtering proxy). Tests: 7/7 in `tests/search-and-metadata.test.ts`.
 
-## 2. Browser extension pairing
+## 3. Link health monitoring
 
-- **Notion page:** [Open in Notion](https://app.notion.com/p/3fde684b1876818fbde5d2f3e4b47b41)
 - **Status:** Done
-- **Last updated:** 2026-10-19
-- **Severity:** high
-- **Category:** Browser extension
-- **Details:** The Chrome extension can pair through a one-time code and save links through the HTTP API.
+- **Backlog page:** https://app.notion.com/p/3fde684b187681179b3cf52dde535880
 
-### Implementation notes
+`checkDeadLink` retries with GET when HEAD returns 403/405/501 and cancels the body. Only 404, 410, and 5xx count as broken; 401/403/405/429 are treated as bot protection. Added `bookmarks.listBroken`, `bookmarks.recheckLink`, and a `/broken` page (Check again / Re-check all / Trash) linked from Profile.
 
-The Chrome extension can pair through a one-time code and save links through the HTTP API.
+## 4. Duplicate merge workflow
 
-## 3. Manual email/password authentication
-
-- **Notion page:** [Open in Notion](https://app.notion.com/p/3fde684b187681ff8308de5317ef3109)
 - **Status:** Done
-- **Last updated:** 2026-10-19
-- **Severity:** high
-- **Category:** Authentication
-- **Details:** Signup, sign-in, session cookies, and protected app access are implemented for the manual auth flow.
+- **Backlog page:** https://app.notion.com/p/3fde684b1876814c893edd614a7aa339
 
-### Implementation notes
+`bookmarks.findDuplicateGroups` groups live bookmarks by normalized URL (scheme, `www.`, trailing slash, tracking params collapse) with the oldest row as keeper. `bookmarks.mergeDuplicates` unions tags and fills missing title/description/category/text/image/favicon, rebuilds `searchText`, then trashes the duplicates with `removalReason: "merged"`. `/duplicates` page linked from Profile. Guards: owner + live + same-URL checks.
 
-Signup, sign-in, session cookies, and protected app access are implemented for the manual auth flow.
+## 5. Multi-source bookmark imports
 
-## 4. Password reset flow
-
-- **Notion page:** [Open in Notion](https://app.notion.com/p/3fde684b1876812aa898dbc0e1967387)
 - **Status:** Done
-- **Last updated:** 2026-10-19
-- **Severity:** high
-- **Category:** Authentication
-- **Details:** Forgot-password, reset-token validation, password update, and session revocation are implemented.
+- **Backlog page:** https://app.notion.com/p/3fde684b1876814c92c3e1dc8aaabd4a
 
-### Implementation notes
+`src/lib/import-parsers.ts` parses Netscape HTML (Chrome/Edge/Firefox/Safari), CSV (Pocket/Raindrop/generic), and JSON (Raindrop/generic). `parseBookmarkFile` picks by extension and falls back to content sniffing. CSV handles quoted fields, escaped quotes, embedded commas/newlines, CRLF. Rows are deduped; rows without a URL are dropped. Import page accepts `.html/.htm/.csv/.json`; server-side `importAll` still validates. Tests: 5/5.
 
-Forgot-password, reset-token validation, password update, and session revocation are implemented.
+## 6. AI tag and summary suggestions
 
-## 5. API-key and HTTP integration
+- **Status:** Done (already implemented)
+- **Backlog page:** https://app.notion.com/p/3fde684b1876819583c8c9952edc40f2
 
-- **Notion page:** [Open in Notion](https://app.notion.com/p/3fde684b187681fabcfed3df98848867)
+`metadata.fetchMetadata` calls `suggestTags` after storing metadata; it prompts Ollama, validates/normalizes the JSON tags, and only fills a description when the user has not written one. Optional: silently skipped without `OLLAMA_API_KEY`; model via `OLLAMA_MODEL`; 64 KB cap and 10s abort. Both variables added to `.env.example`. No code change needed.
+
+## 7. PWA installation
+
+- **Status:** Done (already implemented)
+- **Backlog page:** https://app.notion.com/p/3fde684b18768186b3d8e2fa2e0f7b6d
+
+`/manifest.json` (standalone, maskable icons, share target to `/add`), Apple metadata in the root layout, Serwist service worker with precache + runtime caching, network-only handling for `/login` and `/api/manual-auth/*`, and an offline save queue. No code change needed.
+
+## 8. Public collections
+
 - **Status:** Done
-- **Last updated:** 2026-10-19
-- **Severity:** high
-- **Category:** Security
-- **Details:** HTTP routes now require bearer/API-key headers, validate keys only through internal Convex functions, enforce input size limits, prevent API-key body transport, and support explicit key revocation/rotation hardening.
+- **Backlog page:** https://app.notion.com/p/3fde684b187681258ff7e245423409c1
 
-### Implementation notes
+Added `publicId` + `by_publicId` index to the `collections` table. New functions: `listCollections`, `createCollection`, `renameCollection`, `removeCollection` (unassigns its bookmarks), `toggleCollectionPublic`, `getPublicCollection`. Profile Collections card (create/share/unshare/remove, copies the link), collection picker on the wap detail page, and a server-rendered `/c/<slug>` page. The public page returns only bookmarks in that collection that are not trashed.
 
-API-key validation is internal-only; extension and widget callers use headers; input sizes are bounded; rotation refreshes timestamps; and authenticated users can revoke the current key. Legacy plaintext rows remain temporarily accepted until rotation or re-pairing.
+## 9. Usage analytics
 
-## 6. Device and session management
-
-- **Notion page:** [Open in Notion](https://app.notion.com/p/3fde684b1876811188a6e113dc6b4710)
 - **Status:** Done
-- **Last updated:** 2026-10-19
-- **Severity:** high
-- **Category:** Security
-- **Details:** Users can now view active sessions, see device user-agent and sign-in time, revoke individual sessions, or sign out all sessions.
+- **Backlog page:** https://app.notion.com/p/3fde684b18768196be7bc31e6a086220
 
-### Implementation notes
-
-Sessions record bounded user-agent metadata, expose an authenticated token-free session list, and support ownership-checked individual and all-session revocation through the Profile UI.
-
-## 7. Full-text search
-
-- **Notion page:** [Open in Notion](https://app.notion.com/p/3fde684b187681a490f9fce67ac392f5)
-- **Status:** Done
-- **Last updated:** 2026-10-19
-- **Severity:** high
-- **Category:** Search
-- **Details:** Bookmarks now use a Convex full-text search index across titles, URLs, descriptions, extracted page text, and tags, with saved searches and ownership checks.
-
-### Implementation notes
-
-Search uses a per-bookmark indexed projection with a legacy fallback, includes tags, sends queries to the backend, and supports per-user saved-search create, apply, duplicate prevention, and delete behavior.
-
-## 8. Metadata fetching
-
-- **Notion page:** [Open in Notion](https://app.notion.com/p/3fde684b187681dbaf0bd470713fc141)
-- **Status:** Done
-- **Last updated:** 2026-10-19
-- **Severity:** high
-- **Category:** AI and metadata
-- **Details:** Metadata jobs now enforce safer response handling, size/time limits, bounded and validated AI output, and configured screenshot endpoint validation while preserving title, description, favicon, image, text, tags, and dead-link processing.
-
-### Implementation notes
-
-Metadata fetches accept successful HTML/XHTML only, retain response and timeout controls, safely handle AI enrichment, validate screenshot endpoints, and refresh search projections. DNS-rebinding mitigation still requires an egress proxy or socket-level IP pinning for high-risk deployments.
+Insights card on Profile computed in one `useMemo` from the already-loaded bookmark list: total saved, last 30 days, read completion %, top three domains, top three categories. No new query or table.

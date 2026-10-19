@@ -10,6 +10,11 @@ export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase()
 }
 
+/** Rate-limit bucket for a client IP supplied by a trusted proxy header. */
+export function ipIdentifier(ip: string): string {
+  return `ip:${ip}`
+}
+
 export function isAuthAttemptLimited(
   record: AuthAttemptRecord | null | undefined,
   now = Date.now()

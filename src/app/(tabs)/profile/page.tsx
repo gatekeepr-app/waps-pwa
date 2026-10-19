@@ -8,7 +8,14 @@ import { useMutation, useQuery } from 'convex/react'
 import { Check, Pencil, Plus, Trash2, X } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react'
 import { api } from '../../../../convex/_generated/api'
 
 function ProfilePageContent() {
@@ -21,6 +28,8 @@ function ProfilePageContent() {
   const [editingCategory, setEditingCategory] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const [categoryBusy, setCategoryBusy] = useState(false)
+  const [newCollection, setNewCollection] = useState('')
+  const [collectionBusy, setCollectionBusy] = useState(false)
 
   const generateCode = useMutation(api.pairing.generatePairingCode)
   const addCategory = useMutation(api.categories.add)
@@ -28,6 +37,11 @@ function ProfilePageContent() {
   const removeCategory = useMutation(api.categories.remove)
   const revokeSession = useMutation(api.authManual.revokeSession)
   const revokeAllSessions = useMutation(api.authManual.revokeAllSessions)
+  const createCollection = useMutation(api.bookmarks.createCollection)
+  const toggleCollectionPublic = useMutation(
+    api.bookmarks.toggleCollectionPublic
+  )
+  const removeCollection = useMutation(api.bookmarks.removeCollection)
 
   const bookmarks = useQuery(
     api.bookmarks.list,
@@ -37,13 +51,49 @@ function ProfilePageContent() {
     api.categories.list,
     sessionToken ? { sessionToken } : 'skip'
   )
+  const collections = useQuery(
+    api.bookmarks.listCollections,
+    sessionToken ? { sessionToken } : 'skip'
+  )
   const sessions = useQuery(
     api.authManual.listSessions,
     sessionToken ? { sessionToken } : 'skip'
   )
-  const publicWaps = (bookmarks ?? []).filter(b => b.isPublic)
   const autoPairStarted = useRef(false)
   const username = user?.name || user?.email?.split('@')[0] || 'user'
+
+  const insights = useMemo(() => {
+    const all = (bookmarks ?? []) as any[]
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
+    const recent = all.filter(b => b._creationTime >= cutoff).length
+    const read = all.filter(b => b.isRead).length
+
+    const domains = new Map<string, number>()
+    for (const b of all) {
+      try {
+        const host = new URL(b.url).hostname.replace(/^www\./, '')
+        domains.set(host, (domains.get(host) ?? 0) + 1)
+      } catch {}
+    }
+    const topDomains = Array.from(domains.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+
+    const counts = new Map<string, number>()
+    for (const b of all) {
+      if (b.categoryId)
+        counts.set(b.categoryId, (counts.get(b.categoryId) ?? 0) + 1)
+    }
+    const names = new Map<string, string>(
+      (categories ?? []).map(c => [c._id as string, c.name])
+    )
+    const topCategories = Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([id, count]) => ({ name: names.get(id) ?? 'Category', count }))
+
+    return { total: all.length, recent, read, topDomains, topCategories }
+  }, [bookmarks, categories])
 
   async function handleSignOut() {
     try {
@@ -125,6 +175,52 @@ function ProfilePageContent() {
     }
   }
 
+  async function handleAddCollection(e: React.FormEvent) {
+    e.preventDefault()
+    const name = newCollection.trim()
+    if (!name || !sessionToken) return
+    setCollectionBusy(true)
+    try {
+      await createCollection({ sessionToken, name })
+      setNewCollection('')
+      toast.success(`Collection "${name}" created`)
+    } catch (err: any) {
+      toast.error(err?.message?.replace(/\[.*?\]\s*/, '') || 'Failed')
+    } finally {
+      setCollectionBusy(false)
+    }
+  }
+
+  async function handleToggleCollection(id: string) {
+    if (!sessionToken) return
+    try {
+      const result = await toggleCollectionPublic({
+        sessionToken,
+        id: id as any
+      })
+      if (result.publicId) {
+        await navigator.clipboard
+          .writeText(`${window.location.origin}/c/${result.publicId}`)
+          .catch(() => {})
+        toast.success('Collection is public — link copied')
+      } else {
+        toast.success('Collection is private again')
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Couldn't update collection")
+    }
+  }
+
+  async function handleRemoveCollection(id: string, name: string) {
+    if (!sessionToken) return
+    try {
+      await removeCollection({ sessionToken, id: id as any })
+      toast.success(`Collection "${name}" removed`)
+    } catch (err: any) {
+      toast.error(err?.message || "Couldn't remove collection")
+    }
+  }
+
   if (sessionLoading) {
     return (
       <div className='mx-auto max-w-lg px-4 pb-24 pt-4'>
@@ -193,27 +289,75 @@ function ProfilePageContent() {
         <Link href='/trash' className='waps-btn-outline text-center'>
           Trash
         </Link>
+        <Link href='/broken' className='waps-btn-outline text-center'>
+          Broken links
+        </Link>
+        <Link href='/duplicates' className='waps-btn-outline text-center'>
+          Duplicates
+        </Link>
       </div>
 
       <div className='waps-card mb-4 p-6'>
-        <h2 className='mb-2 text-sm font-bold uppercase tracking-widest text-text-secondary'>
-          Public Waps
+        <h2 className='mb-4 text-sm font-bold uppercase tracking-widest text-text-secondary'>
+          Insights
         </h2>
-        {publicWaps.length === 0 ? (
-          <p className='text-sm text-text-secondary'>
-            Nothing public right now.
-          </p>
-        ) : (
-          <div className='space-y-2'>
-            {publicWaps.map(wap => (
-              <a
-                key={wap._id}
-                href={`/wap/${wap._id}`}
-                className='block truncate text-sm text-primary underline underline-offset-2'
-              >
-                {wap.title || wap.url}
-              </a>
-            ))}
+        <div className='mb-4 grid grid-cols-3 gap-3 text-center'>
+          <div>
+            <div className='text-xl font-bold tabular-nums text-text-primary'>
+              {insights.total}
+            </div>
+            <div className='text-xs text-text-secondary'>saved</div>
+          </div>
+          <div>
+            <div className='text-xl font-bold tabular-nums text-text-primary'>
+              {insights.recent}
+            </div>
+            <div className='text-xs text-text-secondary'>last 30 days</div>
+          </div>
+          <div>
+            <div className='text-xl font-bold tabular-nums text-text-primary'>
+              {insights.total
+                ? Math.round((insights.read / insights.total) * 100)
+                : 0}
+              %
+            </div>
+            <div className='text-xs text-text-secondary'>read</div>
+          </div>
+        </div>
+
+        {insights.topDomains.length > 0 && (
+          <div className='mb-3'>
+            <div className='mb-1 text-xs font-bold uppercase tracking-wide text-text-secondary'>
+              Top domains
+            </div>
+            <ul className='space-y-1 text-sm text-text-primary'>
+              {insights.topDomains.map(([host, count]) => (
+                <li key={host} className='flex justify-between gap-2'>
+                  <span className='truncate'>{host}</span>
+                  <span className='tabular-nums text-text-secondary'>
+                    {count}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {insights.topCategories.length > 0 && (
+          <div>
+            <div className='mb-1 text-xs font-bold uppercase tracking-wide text-text-secondary'>
+              Top categories
+            </div>
+            <ul className='space-y-1 text-sm text-text-primary'>
+              {insights.topCategories.map(cat => (
+                <li key={cat.name} className='flex justify-between gap-2'>
+                  <span className='truncate'>{cat.name}</span>
+                  <span className='tabular-nums text-text-secondary'>
+                    {cat.count}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
       </div>
@@ -326,6 +470,81 @@ function ProfilePageContent() {
           <div className='py-4 text-center text-sm text-text-secondary'>
             Loading categories...
           </div>
+        )}
+      </div>
+
+      <div className='waps-card mb-4 p-6'>
+        <h2 className='mb-1 text-sm font-bold uppercase tracking-widest text-text-secondary'>
+          Collections
+        </h2>
+        <p className='mb-4 text-sm text-text-secondary'>
+          Group waps and share the whole group through one public link.
+        </p>
+
+        <form onSubmit={handleAddCollection} className='mb-4 flex gap-2'>
+          <input
+            type='text'
+            value={newCollection}
+            onChange={e => setNewCollection(e.target.value)}
+            placeholder='New collection name'
+            maxLength={60}
+            className='waps-input min-w-0 flex-1 transition-colors focus:border-primary focus:outline-none'
+          />
+          <button
+            type='submit'
+            disabled={collectionBusy || !newCollection.trim()}
+            className='waps-btn flex flex-shrink-0 items-center gap-1.5 active:scale-[0.98]'
+            aria-label='Add collection'
+          >
+            <Plus size={14} />
+            Add
+          </button>
+        </form>
+
+        {collections && collections.length > 0 ? (
+          <ul className='space-y-1'>
+            {collections.map(collection => (
+              <li
+                key={collection._id}
+                className='flex items-center justify-between gap-2 rounded-md px-2 py-2 hover:bg-surface'
+              >
+                <div className='min-w-0'>
+                  <div className='truncate text-sm text-text-primary'>
+                    {collection.name}
+                  </div>
+                  {collection.publicId && (
+                    <Link
+                      href={`/c/${collection.publicId}`}
+                      className='truncate text-xs text-primary underline underline-offset-2'
+                    >
+                      /c/{collection.publicId}
+                    </Link>
+                  )}
+                </div>
+                <div className='flex flex-shrink-0 items-center gap-2'>
+                  <button
+                    type='button'
+                    onClick={() => handleToggleCollection(collection._id)}
+                    className='text-xs font-bold text-text-secondary underline underline-offset-2 hover:text-primary'
+                  >
+                    {collection.publicId ? 'Unshare' : 'Share'}
+                  </button>
+                  <button
+                    type='button'
+                    onClick={() =>
+                      handleRemoveCollection(collection._id, collection.name)
+                    }
+                    aria-label={`Remove ${collection.name}`}
+                    className='text-text-secondary hover:text-destructive'
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className='text-sm text-text-secondary'>No collections yet.</p>
         )}
       </div>
 

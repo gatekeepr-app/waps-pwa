@@ -671,6 +671,107 @@ export const setTagsInternal = internalMutation({
   }
 })
 
+export const listCollections = query({
+  args: { sessionToken: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const userId = await resolveUserId(ctx, args.sessionToken)
+    if (!userId) return []
+    return await ctx.db
+      .query('collections')
+      .withIndex('by_user', (q: any) => q.eq('userId', userId))
+      .collect()
+  }
+})
+
+export const createCollection = mutation({
+  args: { sessionToken: v.optional(v.string()), name: v.string() },
+  handler: async (ctx, args) => {
+    const userId = await resolveUserId(ctx, args.sessionToken)
+    if (!userId) throw new Error('Not authenticated')
+    const name = args.name.trim().slice(0, 60)
+    if (!name) throw new Error('Collection name is required')
+    return await ctx.db.insert('collections', { userId, name })
+  }
+})
+
+export const renameCollection = mutation({
+  args: {
+    sessionToken: v.optional(v.string()),
+    id: v.id('collections'),
+    name: v.string()
+  },
+  handler: async (ctx, args) => {
+    const userId = await resolveUserId(ctx, args.sessionToken)
+    if (!userId) throw new Error('Not authenticated')
+    const collection = await ctx.db.get(args.id)
+    if (!collection || collection.userId !== userId)
+      throw new Error('Not found')
+    const name = args.name.trim().slice(0, 60)
+    if (!name) throw new Error('Collection name is required')
+    await ctx.db.patch(args.id, { name })
+  }
+})
+
+export const removeCollection = mutation({
+  args: { sessionToken: v.optional(v.string()), id: v.id('collections') },
+  handler: async (ctx, args) => {
+    const userId = await resolveUserId(ctx, args.sessionToken)
+    if (!userId) throw new Error('Not authenticated')
+    const collection = await ctx.db.get(args.id)
+    if (!collection || collection.userId !== userId)
+      throw new Error('Not found')
+    const books = await ctx.db
+      .query('bookmarks')
+      .withIndex('by_user', (q: any) => q.eq('userId', userId))
+      .collect()
+    for (const b of books) {
+      if (b.collectionId === args.id)
+        await ctx.db.patch(b._id, { collectionId: undefined })
+    }
+    await ctx.db.delete(args.id)
+  }
+})
+
+/** Mint or clear the public slug for a collection. */
+export const toggleCollectionPublic = mutation({
+  args: { sessionToken: v.optional(v.string()), id: v.id('collections') },
+  handler: async (ctx, args) => {
+    const userId = await resolveUserId(ctx, args.sessionToken)
+    if (!userId) throw new Error('Not authenticated')
+    const collection = await ctx.db.get(args.id)
+    if (!collection || collection.userId !== userId)
+      throw new Error('Not found')
+    if (collection.publicId) {
+      await ctx.db.patch(args.id, { publicId: undefined })
+      return { publicId: null }
+    }
+    const publicId = crypto.randomUUID().slice(0, 12)
+    await ctx.db.patch(args.id, { publicId })
+    return { publicId }
+  }
+})
+
+export const getPublicCollection = query({
+  args: { publicId: v.string() },
+  handler: async (ctx, args) => {
+    const collection = await ctx.db
+      .query('collections')
+      .withIndex('by_publicId', (q: any) => q.eq('publicId', args.publicId))
+      .first()
+    if (!collection) return null
+    const books = await ctx.db
+      .query('bookmarks')
+      .withIndex('by_user', (q: any) => q.eq('userId', collection.userId))
+      .collect()
+    return {
+      name: collection.name,
+      bookmarks: books
+        .filter((b: any) => b.collectionId === collection._id && !b.isTrashed)
+        .map(publicView)
+    }
+  }
+})
+
 export const updateCollection = mutation({
   args: {
     sessionToken: v.optional(v.string()),
@@ -963,6 +1064,152 @@ export const refreshMetadata = mutation({
       url: b.url
     })
     return { ok: true }
+  }
+})
+
+/** Group the caller's live bookmarks by normalized URL so exact duplicates can
+ *  be merged. The oldest row is the suggested keeper. */
+export const findDuplicateGroups = query({
+  args: { sessionToken: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const userId = await resolveUserId(ctx, args.sessionToken)
+    if (!userId) return []
+    const all = await ctx.db
+      .query('bookmarks')
+      .withIndex('by_user', (q: any) => q.eq('userId', userId))
+      .collect()
+    const groups = new Map<string, any[]>()
+    for (const b of all) {
+      if (b.isTrashed) continue
+      const key = normalizeUrlInput(b.url) ?? b.url
+      const list = groups.get(key) ?? []
+      list.push(b)
+      groups.set(key, list)
+    }
+    return Array.from(groups.values())
+      .filter((group: any[]) => group.length > 1)
+      .map((group: any[]) => {
+        const [keep, ...rest] = group.sort(
+          (a, b) => a._creationTime - b._creationTime
+        )
+        return {
+          keeper: {
+            _id: keep._id,
+            url: keep.url,
+            title: keep.title,
+            description: keep.description,
+            tags: keep.tags ?? []
+          },
+          duplicates: rest.map(r => ({
+            _id: r._id,
+            url: r.url,
+            title: r.title,
+            description: r.description,
+            tags: r.tags ?? []
+          }))
+        }
+      })
+  }
+})
+
+/** Merge tags, description, category, extracted text, and media from duplicate
+ *  rows into the keeper, then move the duplicates to trash. */
+export const mergeDuplicates = mutation({
+  args: {
+    sessionToken: v.optional(v.string()),
+    keepId: v.id('bookmarks'),
+    mergeIds: v.array(v.id('bookmarks'))
+  },
+  handler: async (ctx, args) => {
+    const userId = await resolveUserId(ctx, args.sessionToken)
+    if (!userId) throw new Error('Not authenticated')
+    const keep = await ctx.db.get(args.keepId)
+    if (!keep || keep.userId !== userId || keep.isTrashed)
+      throw new Error('Not found')
+
+    const tags = new Set<string>(keep.tags ?? [])
+    let title = keep.title
+    let description = keep.description
+    let categoryId = keep.categoryId
+    let textContent = keep.textContent
+    let image = keep.image
+    let favicon = keep.favicon
+    let merged = 0
+
+    for (const id of args.mergeIds) {
+      if (id === args.keepId) continue
+      const dup = await ctx.db.get(id)
+      if (!dup || dup.userId !== userId || dup.isTrashed) continue
+      if (dup.url !== keep.url) continue
+      for (const tag of dup.tags ?? []) tags.add(tag)
+      title = title || dup.title
+      description = description || dup.description
+      categoryId = categoryId || dup.categoryId
+      textContent = textContent || dup.textContent
+      image = image || dup.image
+      favicon = favicon || dup.favicon
+      await ctx.db.patch(id, {
+        isTrashed: true,
+        trashedAt: Date.now(),
+        removalReason: 'merged'
+      })
+      merged++
+    }
+
+    const mergedTags = Array.from(tags)
+    await ctx.db.patch(args.keepId, {
+      tags: mergedTags,
+      title,
+      description,
+      categoryId,
+      textContent,
+      image,
+      favicon,
+      searchText: buildSearchText({
+        ...keep,
+        title,
+        description,
+        textContent,
+        tags: mergedTags
+      })
+    })
+    return { merged }
+  }
+})
+
+/** Re-run the dead-link check without refetching page metadata. */
+export const recheckLink = mutation({
+  args: { id: v.id('bookmarks'), sessionToken: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const userId = await resolveUserId(ctx, (args as any).sessionToken)
+    if (!userId) throw new Error('Not authenticated')
+    const b = await ctx.db.get(args.id)
+    if (!b || b.userId !== userId) throw new Error('Not found')
+    await ctx.scheduler.runAfter(0, (internal as any).metadata.checkDeadLink, {
+      bookmarkId: args.id,
+      url: b.url
+    })
+    return { ok: true }
+  }
+})
+
+export const listBroken = query({
+  args: { sessionToken: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const userId = await resolveUserId(ctx, args.sessionToken)
+    if (!userId) return []
+    const all = await ctx.db
+      .query('bookmarks')
+      .withIndex('by_user', (q: any) => q.eq('userId', userId))
+      .collect()
+    return all
+      .filter((b: any) => b.isBroken && !b.isTrashed)
+      .map((b: any) => ({
+        _id: b._id,
+        url: b.url,
+        title: b.title,
+        favicon: b.favicon
+      }))
   }
 })
 

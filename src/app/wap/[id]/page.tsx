@@ -54,6 +54,11 @@ export default function WapDetailPage() {
     api.categories.list,
     sessionToken ? { sessionToken: sessionToken ?? undefined } : 'skip'
   )
+  const collections = useQuery(
+    api.bookmarks.listCollections,
+    sessionToken ? { sessionToken: sessionToken ?? undefined } : 'skip'
+  )
+  const updateCollection = useMutation(api.bookmarks.updateCollection)
 
   const [newTag, setNewTag] = useState('')
   const [shareId, setShareId] = useState<string | null>(null)
@@ -112,6 +117,14 @@ export default function WapDetailPage() {
       id: b._id,
       sessionToken: sessionToken ?? undefined,
       categoryId: value === 'none' ? null : (value as any)
+    })
+  }
+
+  async function handleCollectionChange(value: string) {
+    await updateCollection({
+      bookmarkId: b._id,
+      sessionToken: sessionToken ?? undefined,
+      collectionId: value === 'none' ? undefined : (value as any)
     })
   }
 
@@ -225,6 +238,27 @@ export default function WapDetailPage() {
               {categories.map(cat => (
                 <SelectItem key={cat._id} value={cat._id}>
                   {cat.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {collections && collections.length > 0 && (
+        <div className='mb-4'>
+          <Select
+            value={b.collectionId ?? 'none'}
+            onValueChange={handleCollectionChange}
+          >
+            <SelectTrigger aria-label='Change collection'>
+              <SelectValue placeholder='No collection' />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value='none'>No collection</SelectItem>
+              {collections.map(collection => (
+                <SelectItem key={collection._id} value={collection._id}>
+                  {collection.name}
                 </SelectItem>
               ))}
             </SelectContent>

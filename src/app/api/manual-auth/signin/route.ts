@@ -1,6 +1,7 @@
 export const runtime = 'nodejs'
 
 import { signInBodySchema } from '@/lib/auth-validation'
+import { trustedClientIp } from '@/lib/client-ip'
 import { ConvexHttpClient } from 'convex/browser'
 import { randomBytes } from 'crypto'
 import { NextResponse } from 'next/server'
@@ -36,7 +37,8 @@ export async function POST(req: Request) {
     try {
       const result = await client().mutation(api.authManual.verifyCredentials, {
         email,
-        password
+        password,
+        ip: trustedClientIp(req.headers) ?? undefined
       })
       userId = result.userId
     } catch (error: any) {
